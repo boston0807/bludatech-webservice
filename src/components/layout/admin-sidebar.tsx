@@ -3,13 +3,12 @@
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { Building2, Users, ClipboardList, LayoutDashboard } from "lucide-react";
+import { Building2, Users, LayoutDashboard } from "lucide-react";
 import { cn } from "@/lib/utils";
 
 const NAV_ITEMS = [
   { href: "/admin/dashboard", label: "Dashboard", icon: LayoutDashboard },
   { href: "/admin/customers/pending", label: "อนุมัติลูกค้า", icon: Users },
-  { href: "/admin/workplans/pending", label: "อนุมัติแผนงาน", icon: ClipboardList },
 ];
 
 export function AdminSidebar() {

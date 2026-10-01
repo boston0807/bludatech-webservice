@@ -170,7 +170,7 @@ model JobService {
   jobId          String    @id @map("job_id")
   elevatorModel  String?   @map("elevator_model")
   quantity       Int       @default(1)
-  nextServiceDay DateTime? @map("next_service_day")
+  endServiceDate DateTime? @map("end_service_date")
 
   job Job @relation(fields: [jobId], references: [id], onDelete: Cascade)
 

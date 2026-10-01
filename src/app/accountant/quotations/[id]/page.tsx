@@ -209,7 +209,7 @@ export default function CreateQuotationPage({
       const res = await fetch(`/api/jobs/${id}/quotation`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ totalAmount }),
+        body: JSON.stringify({ totalAmount, jobWage: wage }),
       });
       const data = await res.json();
       if (!res.ok) {

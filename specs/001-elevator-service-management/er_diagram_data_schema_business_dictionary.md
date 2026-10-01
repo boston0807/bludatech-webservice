@@ -73,7 +73,7 @@
 | `job_id` | VARCHAR(20) | PK, FK (Job) | รหัสใบงาน |
 | `elevator_model` | VARCHAR(50) | NULL | รุ่นลิฟต์ |
 | `quantity` | INT | DEFAULT 1 | จำนวนเครื่อง |
-| `next_service_day` | DATE | NULL | กำหนดการบริการรอบถัดไป |
+| `end_service_date` | DATETIME | NULL | วันสิ้นสุดการบริการ (End Service Date) |
 
 ---
 

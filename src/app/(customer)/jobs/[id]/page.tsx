@@ -45,6 +45,18 @@ type Quotation = {
   createdAt: string;
 };
 
+type WorkPlan = {
+  id: string;
+  startDate: string;
+  endDate: string;
+  location: string | null;
+  status: string;
+  materials?: {
+    quantity: number;
+    material: { materialName: string };
+  }[];
+};
+
 type Job = {
   id: string;
   jobType: "INSTALLATION" | "REPAIR" | "SERVICE";
@@ -70,6 +82,7 @@ type Job = {
   service?: { elevatorModel: string | null; quantity: number };
   expenses: Expense[];
   quotation: Quotation | null;
+  workPlan: WorkPlan | null;
 };
 
 // ─── Constants ────────────────────────────────────────────────────────────────
@@ -240,6 +253,28 @@ export default function CustomerJobDetailPage({
         return;
       }
       setActionSuccess("ตรวจรับงานสำเร็จ");
+      fetchJob();
+    } catch {
+      setActionError("เกิดข้อผิดพลาด กรุณาลองใหม่");
+    } finally {
+      setActionLoading(false);
+    }
+  };
+
+  const handleApproveWorkPlan = async () => {
+    if (!job?.workPlan) return;
+    setActionLoading(true);
+    setActionError(null);
+    try {
+      const res = await fetch(`/api/workplans/${job.workPlan.id}/approve`, {
+        method: "PATCH",
+      });
+      const data = await res.json();
+      if (!res.ok) {
+        setActionError(data.message ?? "เกิดข้อผิดพลาด");
+        return;
+      }
+      setActionSuccess("อนุมัติแผนการทำงานสำเร็จ");
       fetchJob();
     } catch {
       setActionError("เกิดข้อผิดพลาด กรุณาลองใหม่");
@@ -654,6 +689,77 @@ export default function CustomerJobDetailPage({
                 )}
               </div>
             )}
+          </CardContent>
+        </Card>
+      )}
+
+      {/* Work Plan Section */}
+      {job.workPlan && (
+        <Card>
+          <CardHeader>
+            <CardTitle className="text-base flex items-center gap-2">
+              <ClipboardCheck className="h-4 w-4" /> แผนการปฏิบัติงาน
+            </CardTitle>
+            <CardDescription>
+              กำหนดการปฏิบัติงานและรายการอะไหล่ที่จอง
+            </CardDescription>
+          </CardHeader>
+          <CardContent className="space-y-4">
+            <div className="space-y-2 text-sm">
+              <p className="font-medium">
+                วันที่: {new Date(job.workPlan.startDate).toLocaleDateString("th-TH")} {job.workPlan.endDate ? `ถึง ${new Date(job.workPlan.endDate).toLocaleDateString("th-TH")}` : ""}
+              </p>
+              <p className="text-muted-foreground">สถานที่: {job.workPlan.location || job.jobAddress}</p>
+              <div className="flex items-center gap-2">
+                <span className="text-muted-foreground">สถานะแผน:</span>
+                <Badge variant={job.workPlan.status === "APPROVED" || job.status === "PLAN_APPROVED" ? "success" : "warning"}>
+                  {job.workPlan.status === "APPROVED" || job.status === "PLAN_APPROVED" ? "อนุมัติแล้ว" : "รออนุมัติแผน"}
+                </Badge>
+              </div>
+
+              {job.workPlan.materials && job.workPlan.materials.length > 0 && (
+                <div className="pt-2 border-t">
+                  <p className="text-xs font-semibold text-muted-foreground mb-1">รายการอะไหล่/วัสดุที่ใช้ตามแผน:</p>
+                  <ul className="space-y-1 text-xs">
+                    {job.workPlan.materials.map((m, idx) => (
+                      <li key={idx} className="flex justify-between bg-muted px-2 py-1 rounded">
+                        <span>{m.material.materialName}</span>
+                        <span>จำนวน: {m.quantity}</span>
+                      </li>
+                    ))}
+                  </ul>
+                </div>
+              )}
+            </div>
+
+            {/* Customer Approve Work Plan Button */}
+            {job.workPlan.status === "DRAFT" && (
+              <div className="pt-2 border-t flex justify-end">
+                <Button onClick={handleApproveWorkPlan} disabled={actionLoading} className="gap-2">
+                  {actionLoading && <Loader2 className="h-4 w-4 animate-spin" />}
+                  ✓ อนุมัติแผนการทำงาน
+                </Button>
+              </div>
+            )}
+          </CardContent>
+        </Card>
+      )}
+
+      {/* Invoice / Payment Link */}
+      {["WAITING_ACCEPTANCE", "ACCEPTED", "PAID"].includes(job.status) && (
+        <Card>
+          <CardContent className="pt-6">
+            <div className="flex items-center justify-between">
+              <div>
+                <p className="font-medium">ใบแจ้งหนี้ / การชำระเงิน</p>
+                <p className="text-sm text-muted-foreground">ตรวจสอบใบแจ้งหนี้และชำระค่าบริการ</p>
+              </div>
+              <Link href={`/jobs/${job.id}/invoice`}>
+                <Button variant="outline" className="gap-2">
+                  <FileText className="h-4 w-4" /> ดูใบแจ้งหนี้ / ชำระเงิน
+                </Button>
+              </Link>
+            </div>
           </CardContent>
         </Card>
       )}

@@ -6,8 +6,8 @@ export const createWorkPlanSchema = z
     jobId: z.string().min(1),
     surveyId: z.string().optional(),
     location: z.string().optional(),
-    startDate: z.string().datetime({ message: "รูปแบบวันที่ไม่ถูกต้อง" }),
-    endDate: z.string().datetime({ message: "รูปแบบวันที่ไม่ถูกต้อง" }),
+    startDate: z.string().min(1, "กรุณาระบุวันที่เริ่มต้น"),
+    endDate: z.string().optional(),
     materials: z
       .array(
         z.object({
@@ -16,10 +16,6 @@ export const createWorkPlanSchema = z
         })
       )
       .optional(),
-  })
-  .refine((data) => new Date(data.startDate) < new Date(data.endDate), {
-    message: "วันที่เริ่มต้องน้อยกว่าวันที่สิ้นสุด",
-    path: ["endDate"],
   });
 
 export type CreateWorkPlanInput = z.infer<typeof createWorkPlanSchema>;

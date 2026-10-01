@@ -205,7 +205,7 @@ CREATE TABLE job_services (
     job_id              VARCHAR(30)     NOT NULL,
     elevator_model      VARCHAR(50),
     quantity            INTEGER         NOT NULL DEFAULT 1,
-    next_service_day    DATE,
+    end_service_date    TIMESTAMP(3),
 
     CONSTRAINT job_services_pkey PRIMARY KEY (job_id),
     CONSTRAINT job_services_job_id_fkey

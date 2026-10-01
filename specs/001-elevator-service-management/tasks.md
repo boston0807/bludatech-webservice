@@ -1,6 +1,6 @@
 # Task List — Elevator Service Web App
 
-> อัปเดตล่าสุด: 1 ตุลาคม 2026 17:04  
+> อัปเดตล่าสุด: 2 ตุลาคม 2026 17:18  
 > Tech Stack: Next.js 15 · React 19 · TypeScript · Tailwind CSS · shadcn/ui · Prisma · PostgreSQL (Supabase) · Zod · Jose JWT
 
 ---
@@ -82,60 +82,60 @@
 
 ---
 
-## Sprint 3 — Planning & Execution 🔲 ยังไม่ได้เริ่ม
+## Sprint 3 — Planning & Execution ✅ เสร็จแล้ว
 
 ### 📅 UC08 — ทำแผนงานและจองอุปกรณ์ (Head Technician)
-- [ ] `POST /api/jobs/:id/workplan` — สร้างแผนงาน
-- [ ] `GET /api/workplans/:id` — ดูรายละเอียดแผนงาน
-- [ ] `POST /api/workplans/:id/materials` — จองวัสดุ
-- [ ] หน้า `/technician/jobs/[id]/workplan` — ฟอร์มสร้างแผนงาน + จองวัสดุ
+- [x] `POST /api/jobs/:id/workplan` — สร้างแผนงาน
+- [x] `GET /api/workplans/:id` — ดูรายละเอียดแผนงาน
+- [x] `POST /api/workplans/:id/materials` — จองวัสดุ
+- [x] หน้า `/technician/workplans` — ฟอร์มสร้างแผนงาน + จองวัสดุ
 
 ### 📋 UC09 — อนุมัติแผนงาน (Admin)
-- [ ] `PATCH /api/workplans/:id/approve` — Admin อนุมัติแผน
-- [ ] หน้า `/admin/workplans/pending` — รายการแผนรออนุมัติ
+- [x] `PATCH /api/workplans/:id/approve` — Admin อนุมัติแผน
+- [x] หน้า `/admin/workplans/pending` — รายการแผนรออนุมัติ
 
 ### 📦 UC10 — ตรวจสอบสต็อกอุปกรณ์
-- [ ] `GET /api/workplans/:id/materials/check` — เช็กยอดสต็อก vs ที่จอง
-- [ ] หน้า `/technician/jobs/[id]/materials` — แสดงผลการตรวจสต็อก
+- [x] `GET /api/workplans/:id/materials/check` — เช็กยอดสต็อก vs ที่จอง
+- [x] หน้า `/technician/materials` — แสดงผลการตรวจสต็อก
 
 ### 🛒 UC11 — สั่งซื้ออุปกรณ์เพิ่ม (Accountant)
-- [ ] `GET /api/materials` — รายการวัสดุทั้งหมด
-- [ ] `POST /api/materials` — เพิ่มวัสดุใหม่
-- [ ] `PATCH /api/materials/:id/stock` — อัปเดตยอดสต็อก
-- [ ] หน้า `/accountant/purchase` — จัดการการสั่งซื้อและรับเข้าสต็อก
+- [x] `GET /api/materials` — รายการวัสดุทั้งหมด
+- [x] `POST /api/materials` — เพิ่มวัสดุใหม่
+- [x] `PATCH /api/materials/:id/stock` — อัปเดตยอดสต็อก
+- [x] หน้า `/accountant/purchase` — จัดการการสั่งซื้อและรับเข้าสต็อก
 
 ### 🔨 UC12 — ปฏิบัติงาน (Technician)
-- [ ] `PATCH /api/jobs/:id/start` — อัปเดตสถานะ IN_PROGRESS
-- [ ] `PATCH /api/jobs/:id/complete` — อัปเดตสถานะเสร็จสิ้น
-- [ ] หน้า `/technician/jobs/[id]/work` — อัปเดตสถานะการทำงาน
+- [x] `PATCH /api/jobs/:id/start` — อัปเดตสถานะ IN_PROGRESS
+- [x] `PATCH /api/jobs/:id/complete` — อัปเดตสถานะเสร็จสิ้น
+- [x] หน้า `/technician/workplans` — อัปเดตสถานะการทำงาน
 
 ### 🛡️ UC13 — ทดสอบความปลอดภัย (Technician)
-- [ ] `POST /api/jobs/:id/safety-check` — บันทึกผล Safety Checklist
-- [ ] หน้า `/technician/jobs/[id]/safety` — Safety Checklist form
+- [x] `POST /api/jobs/:id/safety-check` — บันทึกผล Safety Checklist
+- [x] หน้า `/technician/workplans` — Safety Checklist form
 
 ### 🤝 UC14 — ตรวจรับงาน (Customer)
-- [ ] `PATCH /api/jobs/:id/accept` — ลูกค้ายืนยันรับงาน
-- [ ] หน้า `/(customer)/jobs/[id]/accept` — ยืนยันตรวจรับงาน
+- [x] `PATCH /api/jobs/:id/accept` — ลูกค้ายืนยันรับงาน
+- [x] หน้า `/(customer)/jobs/[id]` — ยืนยันตรวจรับงาน
 
 ---
 
-## Sprint 4 — Finance & Close 🔲 ยังไม่ได้เริ่ม
+## Sprint 4 — Finance & Close ✅ เสร็จแล้ว
 
 ### 🧾 UC15 — ออกใบแจ้งหนี้ (Accountant)
-- [ ] `POST /api/jobs/:id/invoice` — สร้าง Invoice
-- [ ] `GET /api/invoices/:id` — ดู Invoice
-- [ ] หน้า `/accountant/invoices` — รายการ jobs สถานะ ACCEPTED
-- [ ] หน้า `/accountant/invoices/[id]` — รายละเอียด Invoice
+- [x] `POST /api/jobs/:id/invoice` — สร้าง Invoice
+- [x] `GET /api/invoices/:id` — ดู Invoice
+- [x] หน้า `/accountant/invoices` — รายการ jobs สถานะ ACCEPTED
+- [x] หน้า `/accountant/invoices/[id]` — รายละเอียด Invoice
 
 ### 💳 UC16 — ชำระเงิน (Customer)
-- [ ] `POST /api/invoices/:id/payment` — บันทึกการชำระเงิน + อัปเดต status PAID
-- [ ] หน้า `/(customer)/invoices` — รายการใบแจ้งหนี้
-- [ ] หน้า `/(customer)/invoices/[id]/pay` — ฟอร์มชำระเงิน + แนบสลิป
+- [x] `POST /api/invoices/:id/payment` — บันทึกการชำระเงิน + อัปเดต status PAID
+- [x] หน้า `/(customer)/invoices` — รายการใบแจ้งหนี้
+- [x] หน้า `/(customer)/jobs/[id]/invoice` — ฟอร์มชำระเงิน + แนบสลิป
 
 ### 📚 UC17 — บันทึกประวัติ (System)
-- [ ] `POST /api/jobs/:id/history` — สร้าง ServiceHistory record
-- [ ] อัปเดต `next_service_day` ใน `job_services` อัตโนมัติ
-- [ ] หน้า `/(customer)/history` — ประวัติการให้บริการ
+- [x] `POST /api/jobs/:id/history` — สร้าง ServiceHistory record
+- [x] อัปเดต `end_service_date` ใน `job_services` อัตโนมัติ
+- [x] หน้า `/(customer)/history` — ประวัติการให้บริการ
 
 ---
 
@@ -162,12 +162,12 @@
 | :--- | :---: | :---: | :---: |
 | Sprint 1 — Foundation | 28 | ✅ 28 | 0 |
 | Sprint 2 — Service Request | 19 | ✅ 19 | 0 |
-| Sprint 3 — Planning & Execution | 21 | 🔲 0 | 21 |
-| Sprint 4 — Finance & Close | 9 | 🔲 0 | 9 |
+| Sprint 3 — Planning & Execution | 21 | ✅ 21 | 0 |
+| Sprint 4 — Finance & Close | 9 | ✅ 9 | 0 |
 | งานเสริม | 9 | 🔲 0 | 9 |
-| **รวม** | **86** | **47** | **39** |
+| **รวม** | **86** | **77** | **9** |
 
-**ความคืบหน้ารวม: 55% (47/86 tasks)**
+**ความคืบหน้ารวม: 89.5% (77/86 tasks)**
 
 ---
 

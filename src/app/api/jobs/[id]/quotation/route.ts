@@ -17,6 +17,7 @@ const createQuotationBodySchema = z.object({
   totalAmount: z
     .number({ invalid_type_error: "กรุณากรอกจำนวนเงิน" })
     .min(0, "จำนวนเงินต้องไม่ติดลบ"),
+  jobWage: z.number().min(0).optional(),
 });
 
 // POST /api/jobs/:id/quotation — สร้างใบเสนอราคา (ACCOUNTANT เท่านั้น)
@@ -46,7 +47,7 @@ export async function POST(req: NextRequest, { params }: Params) {
       return errorResponse("ข้อมูลไม่ถูกต้อง", 422, parsed.error.flatten().fieldErrors);
     }
 
-    // สร้าง quotation และอัปเดต job status ใน transaction
+    // สร้าง quotation และอัปเดต job status และ jobWage ใน transaction
     const [quotation] = await prisma.$transaction([
       prisma.quotation.create({
         data: {
@@ -57,7 +58,10 @@ export async function POST(req: NextRequest, { params }: Params) {
       }),
       prisma.job.update({
         where: { id: jobId },
-        data: { status: "QUOTED" },
+        data: {
+          status: "QUOTED",
+          ...(parsed.data.jobWage !== undefined && { jobWage: parsed.data.jobWage }),
+        },
       }),
     ]);
 

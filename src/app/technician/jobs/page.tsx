@@ -56,8 +56,9 @@ export default function TechnicianJobsPage() {
         <div className="space-y-3">
           {jobs.map((job) => {
             const Icon = JOB_TYPE_ICON[job.jobType];
+            const href = job.status === "PENDING" ? `/technician/jobs/${job.id}/survey` : `/technician/workplans`;
             return (
-              <Link key={job.id} href={`/technician/jobs/${job.id}/survey`}>
+              <Link key={job.id} href={href}>
                 <Card className="hover:shadow-md transition-shadow cursor-pointer">
                   <CardHeader className="pb-2">
                     <div className="flex items-center justify-between">

@@ -1,8 +1,10 @@
 // src/lib/api-response.ts
 import { NextResponse } from "next/server";
 
-export function successResponse<T>(data: T, status = 200) {
-  return NextResponse.json({ success: true, data }, { status });
+export function successResponse<T>(data: T, messageOrStatus: string | number = 200) {
+  const status = typeof messageOrStatus === "number" ? messageOrStatus : 200;
+  const message = typeof messageOrStatus === "string" ? messageOrStatus : undefined;
+  return NextResponse.json({ success: true, data, ...(message ? { message } : {}) }, { status });
 }
 
 export function errorResponse(message: string, status = 400, errors?: unknown) {
