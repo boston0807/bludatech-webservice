@@ -1,0 +1,326 @@
+// prisma/schema.prisma
+// Elevator Service Management System - Full Schema
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+// ─────────────────────────────────────────────
+// ENUMS
+// ─────────────────────────────────────────────
+
+enum CustomerStatus {
+  PENDING
+  ACTIVE
+  REJECTED
+}
+
+enum EmployeeRole {
+  ADMIN
+  TECHNICIAN
+  HEAD_TECHNICIAN
+  ACCOUNTANT
+}
+
+enum JobType {
+  INSTALLATION
+  REPAIR
+  SERVICE
+}
+
+enum JobStatus {
+  PENDING
+  PASS_SURVEY
+  QUOTED
+  REQUEST_EDIT
+  APPROVE
+  PLAN_APPROVED
+  IN_PROGRESS
+  WAITING_ACCEPTANCE
+  ACCEPTED
+  PAID
+  COMPLETED
+  CANCELLED
+}
+
+enum QuotationStatus {
+  PENDING
+  APPROVED
+  REJECTED
+}
+
+enum WorkPlanStatus {
+  DRAFT
+  APPROVED
+  IN_PROGRESS
+  FINISHED
+}
+
+enum ReceiptStatus {
+  UNPAID
+  PAID
+  CANCELLED
+}
+
+enum PaymentMethod {
+  TRANSFER
+  CASH
+  CREDIT_CARD
+}
+
+// ─────────────────────────────────────────────
+// CORE ENTITIES
+// ─────────────────────────────────────────────
+
+model Customer {
+  id              String         @id @default(cuid()) @map("customer_id")
+  username        String         @unique
+  password        String
+  customerName    String         @map("customer_name")
+  customerAddress String         @map("customer_address")
+  customerPhone   String         @map("customer_phone")
+  customerEmail   String?        @map("customer_email")
+  taxId           String?        @map("tax_id")
+  status          CustomerStatus @default(PENDING)
+  createdAt       DateTime       @default(now()) @map("created_at")
+  updatedAt       DateTime       @updatedAt @map("updated_at")
+
+  jobs Job[]
+
+  @@map("customers")
+}
+
+model Employee {
+  id           String       @id @default(cuid()) @map("employee_id")
+  username     String       @unique
+  password     String
+  employeeName String       @map("employee_name")
+  role         EmployeeRole
+  createdAt    DateTime     @default(now()) @map("created_at")
+  updatedAt    DateTime     @updatedAt @map("updated_at")
+
+  surveys  Survey[]
+  receipts Receipt[]
+
+  @@map("employees")
+}
+
+// ─────────────────────────────────────────────
+// JOB (ใบงานหลัก)
+// ─────────────────────────────────────────────
+
+model Job {
+  id          String    @id @default(cuid()) @map("job_id")
+  customerId  String    @map("customer_id")
+  jobType     JobType   @map("job_type")
+  requestDate DateTime  @default(now()) @map("request_date")
+  jobAddress  String    @map("job_address")
+  jobNote     String?   @map("job_note")
+  jobWage     Decimal   @default(0.00) @map("job_wage") @db.Decimal(10, 2)
+  status      JobStatus @default(PENDING)
+  createdAt   DateTime  @default(now()) @map("created_at")
+  updatedAt   DateTime  @updatedAt @map("updated_at")
+
+  customer     Customer          @relation(fields: [customerId], references: [id])
+  installation JobInstallation?
+  repair       JobRepair?
+  service      JobService?
+  surveys      Survey[]
+  expenses     Expense[]
+  quotation    Quotation?
+  workPlan     WorkPlan?
+  receipt      Receipt?
+
+  @@map("jobs")
+}
+
+// ─────────────────────────────────────────────
+// JOB SUBTYPES (1:1 กับ Job)
+// ─────────────────────────────────────────────
+
+model JobInstallation {
+  jobId          String  @id @map("job_id")
+  buildingFloor  Int     @map("building_floor")
+  elevatorBrand  String? @map("elevator_brand")
+  elevatorModel  String? @map("elevator_model")
+  elevatorType   String? @map("elevator_type")
+  quantity       Int     @default(1)
+
+  job Job @relation(fields: [jobId], references: [id], onDelete: Cascade)
+
+  @@map("job_installations")
+}
+
+model JobRepair {
+  jobId         String  @id @map("job_id")
+  elevatorModel String? @map("elevator_model")
+  quantity      Int     @default(1)
+
+  job Job @relation(fields: [jobId], references: [id], onDelete: Cascade)
+
+  @@map("job_repairs")
+}
+
+model JobService {
+  jobId          String    @id @map("job_id")
+  elevatorModel  String?   @map("elevator_model")
+  quantity       Int       @default(1)
+  nextServiceDay DateTime? @map("next_service_day")
+
+  job Job @relation(fields: [jobId], references: [id], onDelete: Cascade)
+
+  @@map("job_services")
+}
+
+// ─────────────────────────────────────────────
+// SURVEY & EXPENSE
+// ─────────────────────────────────────────────
+
+model Survey {
+  id           String   @id @default(cuid()) @map("survey_id")
+  jobId        String   @map("job_id")
+  technicianId String   @map("technician_id")
+  surveyDate   DateTime @default(now()) @map("survey_date")
+  note         String?
+
+  job        Job      @relation(fields: [jobId], references: [id])
+  technician Employee @relation(fields: [technicianId], references: [id])
+  workPlans  WorkPlan[]
+
+  @@map("surveys")
+}
+
+model Expense {
+  id          Int     @id @default(autoincrement()) @map("expense_id")
+  jobId       String  @map("job_id")
+  expenseName String  @map("expense_name")
+  quantity    Int     @default(1)
+  price       Decimal @db.Decimal(10, 2)
+
+  job Job @relation(fields: [jobId], references: [id])
+
+  @@map("expenses")
+}
+
+// ─────────────────────────────────────────────
+// QUOTATION
+// ─────────────────────────────────────────────
+
+model Quotation {
+  id          String          @id @default(cuid()) @map("quotation_id")
+  jobId       String          @unique @map("job_id")
+  fileData    Bytes?          @map("file_data")
+  totalAmount Decimal         @map("total_amount") @db.Decimal(10, 2)
+  status      QuotationStatus @default(PENDING)
+  rejectNote  String?         @map("reject_note")
+  createdAt   DateTime        @default(now()) @map("created_at")
+  updatedAt   DateTime        @updatedAt @map("updated_at")
+
+  job Job @relation(fields: [jobId], references: [id])
+
+  @@map("quotations")
+}
+
+// ─────────────────────────────────────────────
+// WORK PLAN & MATERIALS
+// ─────────────────────────────────────────────
+
+model WorkPlan {
+  id        String         @id @default(cuid()) @map("plan_id")
+  jobId     String         @unique @map("job_id")
+  surveyId  String?        @map("survey_id")
+  location  String?
+  startDate DateTime       @map("start_date")
+  endDate   DateTime       @map("end_date")
+  status    WorkPlanStatus @default(DRAFT)
+  createdAt DateTime       @default(now()) @map("created_at")
+  updatedAt DateTime       @updatedAt @map("updated_at")
+
+  job       Job                @relation(fields: [jobId], references: [id])
+  survey    Survey?            @relation(fields: [surveyId], references: [id])
+  materials WorkPlanMaterial[]
+
+  @@map("work_plans")
+}
+
+model Material {
+  id            String  @id @default(cuid()) @map("material_id")
+  materialName  String  @map("material_name")
+  price         Decimal @db.Decimal(10, 2)
+  stockQuantity Int     @default(0) @map("stock_quantity")
+
+  workPlanMaterials WorkPlanMaterial[]
+
+  @@map("materials")
+}
+
+model WorkPlanMaterial {
+  planId     String @map("plan_id")
+  materialId String @map("material_id")
+  quantity   Int
+
+  workPlan WorkPlan @relation(fields: [planId], references: [id])
+  material Material @relation(fields: [materialId], references: [id])
+
+  @@id([planId, materialId])
+  @@map("work_plan_materials")
+}
+
+// ─────────────────────────────────────────────
+// RECEIPT & PAYMENT
+// ─────────────────────────────────────────────
+
+model Receipt {
+  id          String        @id @default(cuid()) @map("receipt_id")
+  jobId       String        @unique @map("job_id")
+  employeeId  String        @map("employee_id")
+  totalAmount Decimal       @map("total_amount") @db.Decimal(10, 2)
+  status      ReceiptStatus @default(UNPAID)
+  createdAt   DateTime      @default(now()) @map("created_at")
+  updatedAt   DateTime      @updatedAt @map("updated_at")
+
+  job      Job       @relation(fields: [jobId], references: [id])
+  employee Employee  @relation(fields: [employeeId], references: [id])
+  payments Payment[]
+
+  @@map("receipts")
+}
+
+model Payment {
+  id            String        @id @default(cuid()) @map("payment_id")
+  receiptId     String        @map("receipt_id")
+  paymentDate   DateTime      @default(now()) @map("payment_date")
+  amount        Decimal       @db.Decimal(10, 2)
+  paymentMethod PaymentMethod @map("payment_method")
+  slipUrl       String?       @map("slip_url")
+  verified      Boolean       @default(false)
+  createdAt     DateTime      @default(now()) @map("created_at")
+
+  receipt Receipt @relation(fields: [receiptId], references: [id])
+
+  @@map("payments")
+}
+
+// ─────────────────────────────────────────────
+// SERVICE HISTORY
+// ─────────────────────────────────────────────
+
+model ServiceHistory {
+  id              String   @id @default(cuid()) @map("history_id")
+  jobId           String   @map("job_id")
+  customerId      String   @map("customer_id")
+  jobType         JobType  @map("job_type")
+  completedDate   DateTime @map("completed_date")
+  totalCost       Decimal  @map("total_cost") @db.Decimal(10, 2)
+  technicianNames String   @map("technician_names")
+  summary         String?
+  nextServiceDate DateTime? @map("next_service_date")
+  createdAt       DateTime @default(now()) @map("created_at")
+
+  @@map("service_histories")
+}
