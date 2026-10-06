@@ -10,6 +10,7 @@ import {
   notFoundResponse,
 } from "@/lib/api-response";
 import { z } from "zod";
+import { sendQuotationCreatedEmail } from "@/lib/email";
 
 type Params = { params: Promise<{ id: string }> };
 
@@ -32,7 +33,7 @@ export async function POST(req: NextRequest, { params }: Params) {
   try {
     const job = await prisma.job.findUnique({
       where: { id: jobId },
-      include: { quotation: true },
+      include: { quotation: true, customer: true },
     });
     if (!job) return notFoundResponse("ไม่พบใบงาน");
 
@@ -64,6 +65,16 @@ export async function POST(req: NextRequest, { params }: Params) {
         },
       }),
     ]);
+
+    // ส่งอีเมลแจ้งลูกค้าว่ามีใบเสนอราคาพร้อมให้อนุมัติ (fire-and-forget)
+    if (job.customer.customerEmail) {
+      sendQuotationCreatedEmail({
+        to: job.customer.customerEmail,
+        customerName: job.customer.customerName,
+        jobId,
+        totalAmount: parsed.data.totalAmount,
+      });
+    }
 
     return successResponse(quotation, 201);
   } catch (error) {

@@ -2,7 +2,14 @@
 import { NextRequest } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { verifyToken, AUTH_COOKIE_NAME } from "@/lib/auth";
-import { successResponse, errorResponse, unauthorizedResponse, forbiddenResponse, notFoundResponse } from "@/lib/api-response";
+import {
+  successResponse,
+  errorResponse,
+  unauthorizedResponse,
+  forbiddenResponse,
+  notFoundResponse,
+} from "@/lib/api-response";
+import { sendInvoiceIssuedEmail } from "@/lib/email";
 
 type Params = { params: Promise<{ id: string }> };
 
@@ -20,12 +27,15 @@ export async function POST(req: NextRequest, { params }: Params) {
   const { id: jobId } = await params;
   const job = await prisma.job.findUnique({
     where: { id: jobId },
-    include: { quotation: true, receipt: true },
+    include: { quotation: true, receipt: true, customer: true },
   });
 
   if (!job) return notFoundResponse("ไม่พบใบงาน");
   if (job.status !== "ACCEPTED") {
-    return errorResponse("ใบงานต้องอยู่ในสถานะ ACCEPTED (ลูกค้าตรวจรับงานแล้ว) จึงจะออกใบแจ้งหนี้ได้", 422);
+    return errorResponse(
+      "ใบงานต้องอยู่ในสถานะ ACCEPTED (ลูกค้าตรวจรับงานแล้ว) จึงจะออกใบแจ้งหนี้ได้",
+      422
+    );
   }
   if (!job.quotation) {
     return errorResponse("ไม่พบใบเสนอราคาสำหรับใบงานนี้", 422);
@@ -45,9 +55,21 @@ export async function POST(req: NextRequest, { params }: Params) {
       include: { job: { include: { customer: true } }, employee: true },
     });
 
+    // ส่งอีเมลแจ้งลูกค้าว่ามีใบแจ้งหนี้พร้อมชำระ (fire-and-forget)
+    if (job.customer.customerEmail) {
+      sendInvoiceIssuedEmail({
+        to: job.customer.customerEmail,
+        customerName: job.customer.customerName,
+        jobId,
+        invoiceId: receipt.id,
+        totalAmount: job.quotation.totalAmount.toString(),
+      });
+    }
+
     return successResponse(receipt, "ออกใบแจ้งหนี้สำเร็จ");
-  } catch (error: any) {
-    return errorResponse(error.message || "เกิดข้อผิดพลาด", 500);
+  } catch (error: unknown) {
+    const message = error instanceof Error ? error.message : "เกิดข้อผิดพลาด";
+    return errorResponse(message, 500);
   }
 }
 

@@ -2,7 +2,14 @@
 import { NextRequest } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { verifyToken, AUTH_COOKIE_NAME } from "@/lib/auth";
-import { successResponse, errorResponse, unauthorizedResponse, forbiddenResponse, notFoundResponse } from "@/lib/api-response";
+import {
+  successResponse,
+  errorResponse,
+  unauthorizedResponse,
+  forbiddenResponse,
+  notFoundResponse,
+} from "@/lib/api-response";
+import { sendWaitingAcceptanceEmail } from "@/lib/email";
 
 type Params = { params: Promise<{ id: string }> };
 
@@ -13,13 +20,22 @@ export async function POST(req: NextRequest, { params }: Params) {
   const payload = await verifyToken(token);
   if (!payload) return unauthorizedResponse();
 
-  if (payload.role !== "TECHNICIAN" && payload.role !== "HEAD_TECHNICIAN" && payload.role !== "ADMIN") {
+  if (
+    payload.role !== "TECHNICIAN" &&
+    payload.role !== "HEAD_TECHNICIAN" &&
+    payload.role !== "ADMIN"
+  ) {
     return forbiddenResponse("เฉพาะช่างที่สามารถบันทึกผลตรวจสอบความปลอดภัยได้");
   }
 
   const { id } = await params;
-  const job = await prisma.job.findUnique({ where: { id } });
+
+  const job = await prisma.job.findUnique({
+    where: { id },
+    include: { customer: true },
+  });
   if (!job) return notFoundResponse("ไม่พบใบงาน");
+
   if (job.status !== "IN_PROGRESS") {
     return errorResponse("ใบงานต้องอยู่ในสถานะ IN_PROGRESS จึงจะทดสอบความปลอดภัยได้", 422);
   }
@@ -37,12 +53,27 @@ export async function POST(req: NextRequest, { params }: Params) {
       where: { id },
       data: {
         status: newStatus,
-        jobNote: note ? `${job.jobNote || ''}\n[Safety Check]: ${note} (${passed ? 'PASS' : 'FAIL'})` : job.jobNote,
+        jobNote: note
+          ? `${job.jobNote || ""}\n[Safety Check]: ${note} (${passed ? "PASS" : "FAIL"})`
+          : job.jobNote,
       },
     });
 
-    return successResponse(updated, passed ? "ทดสอบความปลอดภัยผ่าน ส่งมอบให้ลูกค้าตรวจรับงาน" : "ทดสอบไม่ผ่าน กรุณาแก้ไขและทดสอบใหม่");
-  } catch (error: any) {
-    return errorResponse(error.message || "เกิดข้อผิดพลาด", 500);
+    // ส่งอีเมลแจ้งลูกค้าเมื่อผ่านการทดสอบ — รอตรวจรับงาน (fire-and-forget)
+    if (passed && job.customer.customerEmail) {
+      sendWaitingAcceptanceEmail({
+        to: job.customer.customerEmail,
+        customerName: job.customer.customerName,
+        jobId: id,
+      });
+    }
+
+    return successResponse(
+      updated,
+      passed ? "ทดสอบความปลอดภัยผ่าน ส่งมอบให้ลูกค้าตรวจรับงาน" : "ทดสอบไม่ผ่าน กรุณาแก้ไขและทดสอบใหม่"
+    );
+  } catch (error: unknown) {
+    const message = error instanceof Error ? error.message : "เกิดข้อผิดพลาด";
+    return errorResponse(message, 500);
   }
 }

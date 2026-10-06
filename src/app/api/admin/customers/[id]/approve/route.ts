@@ -9,6 +9,7 @@ import {
   unauthorizedResponse,
   notFoundResponse,
 } from "@/lib/api-response";
+import { sendCustomerApprovalEmail } from "@/lib/email";
 
 export async function PATCH(
   req: NextRequest,
@@ -48,6 +49,15 @@ export async function PATCH(
     action === "APPROVE"
       ? `อนุมัติลูกค้า ${updated.customerName} สำเร็จ`
       : `ปฏิเสธลูกค้า ${updated.customerName} แล้ว`;
+
+  // ส่งอีเมลแจ้งลูกค้า (fire-and-forget — ไม่รอผล ไม่พัง API)
+  if (updated.customerEmail) {
+    sendCustomerApprovalEmail({
+      to: updated.customerEmail,
+      customerName: updated.customerName,
+      action,
+    });
+  }
 
   return successResponse({ customer: updated, message });
 }

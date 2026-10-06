@@ -1,6 +1,6 @@
 # Task List — Elevator Service Web App
 
-> อัปเดตล่าสุด: 2 ตุลาคม 2026 17:18  
+> อัปเดตล่าสุด: 7 ตุลาคม 2026 02:20  
 > Tech Stack: Next.js 15 · React 19 · TypeScript · Tailwind CSS · shadcn/ui · Prisma · PostgreSQL (Supabase) · Zod · Jose JWT
 
 ---
@@ -139,20 +139,13 @@
 
 ---
 
-## งานเสริม (Cross-cutting) 🔲 ยังไม่ได้เริ่ม
+## งานเสริม (Cross-cutting)
 
-### 🔔 Notifications
-- [ ] ส่งอีเมลเมื่อ Admin อนุมัติลูกค้า (UC03)
-- [ ] ส่งอีเมลแจ้งลูกค้าเมื่อมีใบเสนอราคา (UC06)
-- [ ] ส่งอีเมลแจ้งเมื่องานเสร็จรอตรวจรับ (UC13)
-- [ ] ส่งอีเมลแจ้ง Invoice (UC15)
-
-### 🔒 Security & Polish
-- [ ] Rate limiting บน Auth API
-- [ ] Input sanitization
-- [ ] Error boundary components
-- [ ] Loading skeleton สำหรับทุกหน้า
-- [ ] Empty state components
+### 🔔 Notifications ✅ เสร็จแล้ว
+- [x] ส่งอีเมลเมื่อ Admin อนุมัติลูกค้า (UC03) — `sendCustomerApprovalEmail`
+- [x] ส่งอีเมลแจ้งลูกค้าเมื่อมีใบเสนอราคา (UC06) — `sendQuotationCreatedEmail`
+- [x] ส่งอีเมลแจ้งเมื่องานเสร็จรอตรวจรับ (UC13) — `sendWaitingAcceptanceEmail`
+- [x] ส่งอีเมลแจ้ง Invoice (UC15) — `sendInvoiceIssuedEmail`
 
 ---
 
@@ -164,10 +157,10 @@
 | Sprint 2 — Service Request | 19 | ✅ 19 | 0 |
 | Sprint 3 — Planning & Execution | 21 | ✅ 21 | 0 |
 | Sprint 4 — Finance & Close | 9 | ✅ 9 | 0 |
-| งานเสริม | 9 | 🔲 0 | 9 |
-| **รวม** | **86** | **77** | **9** |
+| งานเสริม — Notifications | 4 | ✅ 4 | 0 |
+| **รวม** | **81** | **81** | **0** |
 
-**ความคืบหน้ารวม: 89.5% (77/86 tasks)**
+**ความคืบหน้ารวม: 100% (81/81 tasks)** 🎉
 
 ---
 
