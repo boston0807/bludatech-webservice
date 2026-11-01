@@ -20,10 +20,26 @@ import {
 } from "@/components/ui/card";
 import { loginSchema, type LoginInput } from "@/lib/validations/auth";
 
+// รับเฉพาะ path ภายในเว็บเดียวกัน กัน open redirect (เช่น ?redirect=https://evil.com หรือ //evil.com)
+// และกันการวนกลับมาหน้า login/register
+function safeRedirect(path: string | null): string | null {
+  if (!path || !path.startsWith("/") || path.startsWith("//") || path.startsWith("/\\")) return null;
+  if (/^\/(login|register)(\/|\?|$)/.test(path)) return null;
+  return path;
+}
+
+// navigator.cookieEnabled ยังเป็น true แม้ Edge ตั้งค่าบล็อก cookie → ทดสอบเขียน/อ่าน cookie จริง
+function cookiesWork(): boolean {
+  document.cookie = "cookie_test=1; path=/; SameSite=Lax";
+  const ok = document.cookie.includes("cookie_test=1");
+  document.cookie = "cookie_test=; path=/; max-age=0";
+  return ok;
+}
+
 export function LoginForm() {
   const router = useRouter();
   const searchParams = useSearchParams();
-  const redirectTo = searchParams.get("redirect");
+  const redirectTo = safeRedirect(searchParams.get("redirect"));
   const [serverError, setServerError] = useState<string | null>(null);
 
   const {
@@ -36,6 +52,11 @@ export function LoginForm() {
 
   const onSubmit = async (data: LoginInput) => {
     setServerError(null);
+    // ถ้า browser บล็อก cookie จะ login สำเร็จแต่ถูกเด้งกลับมาหน้านี้ตลอด → แจ้งผู้ใช้แทน
+    if (!cookiesWork()) {
+      setServerError("เบราว์เซอร์ของคุณปิดการใช้งาน Cookie กรุณาอนุญาต Cookie สำหรับเว็บไซต์นี้แล้วลองใหม่อีกครั้ง");
+      return;
+    }
     try {
       const res = await fetch("/api/auth/login", {
         method: "POST",
@@ -71,7 +92,7 @@ export function LoginForm() {
           <CardDescription>ระบบบริหารจัดการบริการลิฟต์โดยสาร</CardDescription>
         </CardHeader>
 
-        <form onSubmit={handleSubmit(onSubmit)}>
+        <form method="post" onSubmit={handleSubmit(onSubmit)}>
           <CardContent className="space-y-4">
             {serverError && (
               <div className="bg-destructive/10 border border-destructive/30 text-destructive text-sm rounded-md px-4 py-3">

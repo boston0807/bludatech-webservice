@@ -42,3 +42,14 @@ yarn-error.log*
 # typescript
 *.tsbuildinfo
 next-env.d.ts
+
+/state
+
+/collaboration
+
+/sequence
+/erd
+/supabase
+/task
+*.drawio
+*.mmd
