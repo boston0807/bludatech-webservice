@@ -9,8 +9,6 @@ export async function saveJobHistory(tx: Prisma.TransactionClient, jobId: string
   if (!job) throw new Error("ไม่พบใบงาน");
 
   const completedDate = new Date();
-  const nextDate = new Date(completedDate);
-  nextDate.setMonth(nextDate.getMonth() + 6);
 
   const history = await tx.serviceHistory.create({
     data: {
@@ -21,7 +19,6 @@ export async function saveJobHistory(tx: Prisma.TransactionClient, jobId: string
       totalCost: job.quotation?.totalAmount || job.jobWage,
       technicianNames: "ทีมช่างผู้ปฏิบัติงาน",
       summary: job.jobNote || "บริการเสร็จสิ้นสมบูรณ์",
-      nextServiceDate: job.jobType === "SERVICE" ? nextDate : null,
     },
   });
 

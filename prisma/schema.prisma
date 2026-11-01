@@ -319,7 +319,6 @@ model ServiceHistory {
   totalCost       Decimal  @map("total_cost") @db.Decimal(10, 2)
   technicianNames String   @map("technician_names")
   summary         String?
-  nextServiceDate DateTime? @map("next_service_date")
   createdAt       DateTime @default(now()) @map("created_at")
 
   @@map("service_histories")
