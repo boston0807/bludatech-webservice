@@ -17,7 +17,7 @@ export async function PATCH(req: NextRequest, { params }: Params) {
   const job = await prisma.job.findUnique({ where: { id } });
   if (!job) return notFoundResponse("ไม่พบใบงาน");
 
-  if (payload.role === "CUSTOMER" && job.customerId !== payload.sub) {
+  if (payload.role !== "CUSTOMER" || job.customerId !== payload.sub) {
     return forbiddenResponse();
   }
 

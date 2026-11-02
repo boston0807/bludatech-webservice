@@ -57,7 +57,7 @@ type Job = {
   repair?: { elevatorModel: string | null; quantity: number };
   service?: { elevatorModel: string | null; quantity: number };
   expenses: Expense[];
-  quotation: { id: string; totalAmount: string; status: string } | null;
+  quotation: { id: string; totalAmount: string; status: string; rejectNote: string | null } | null;
 };
 
 // ─── Constants ────────────────────────────────────────────────────────────────
@@ -131,8 +131,13 @@ export default function CreateQuotationPage({
     );
   }
 
+  // A rejected quotation can be reissued once the job is back in a quotable status
+  const canRequote =
+    job.quotation?.status === "REJECTED" &&
+    (job.status === "PASS_SURVEY" || job.status === "REQUEST_EDIT");
+
   // Already has a quotation
-  if (job.quotation) {
+  if (job.quotation && !canRequote) {
     return (
       <div className="max-w-2xl mx-auto space-y-6">
         <div>
@@ -241,6 +246,12 @@ export default function CreateQuotationPage({
           กรอกข้อมูลและยืนยันยอดรวมเพื่อส่งใบเสนอราคาให้ลูกค้า
         </p>
       </div>
+
+      {job.quotation?.rejectNote && (
+        <div className="bg-destructive/10 border border-destructive/30 text-destructive text-sm rounded-md px-4 py-3">
+          เหตุผลที่ลูกค้าขอแก้ไข: {job.quotation.rejectNote}
+        </div>
+      )}
 
       {success && (
         <div className="bg-green-50 border border-green-200 text-green-700 rounded-md px-4 py-3 text-sm flex items-center gap-2">

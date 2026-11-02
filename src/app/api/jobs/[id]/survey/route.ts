@@ -17,6 +17,9 @@ export async function POST(req: NextRequest, { params }: Params) {
 
   const job = await prisma.job.findUnique({ where: { id: jobId } });
   if (!job) return notFoundResponse("ไม่พบใบงาน");
+  if (job.status !== "PENDING" && job.status !== "REQUEST_EDIT") {
+    return errorResponse("ใบงานนี้ไม่อยู่ในสถานะที่บันทึกการสำรวจได้", 422);
+  }
 
   const body = await req.json();
   const parsed = createSurveySchema.safeParse({ ...body, jobId });

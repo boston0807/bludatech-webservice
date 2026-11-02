@@ -1,4 +1,5 @@
 import { Prisma } from "@prisma/client";
+import { ApiError } from "@/lib/api-response";
 
 export async function saveJobHistory(tx: Prisma.TransactionClient, jobId: string) {
   const job = await tx.job.findUnique({
@@ -7,6 +8,15 @@ export async function saveJobHistory(tx: Prisma.TransactionClient, jobId: string
   });
 
   if (!job) throw new Error("ไม่พบใบงาน");
+
+  // เปลี่ยนสถานะแบบมีเงื่อนไขก่อน กันการบันทึกประวัติซ้ำเมื่อมีคำขอพร้อมกัน
+  const completed = await tx.job.updateMany({
+    where: { id: jobId, status: { in: ["ACCEPTED", "PAID"] } },
+    data: { status: "COMPLETED" },
+  });
+  if (completed.count === 0) {
+    throw new ApiError("ใบงานนี้ไม่อยู่ในสถานะที่บันทึกประวัติได้", 409);
+  }
 
   const completedDate = new Date();
 
@@ -31,11 +41,6 @@ export async function saveJobHistory(tx: Prisma.TransactionClient, jobId: string
       data: { endServiceDate },
     });
   }
-
-  await tx.job.update({
-    where: { id: jobId },
-    data: { status: "COMPLETED" },
-  });
 
   return history;
 }

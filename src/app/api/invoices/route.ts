@@ -22,7 +22,7 @@ export async function GET(req: NextRequest) {
           },
         },
         include: {
-          job: { include: { customer: true } },
+          job: { include: { customer: { omit: { password: true } } } },
           payments: true,
           employee: { select: { employeeName: true } },
         },
@@ -32,7 +32,7 @@ export async function GET(req: NextRequest) {
       // พนักงาน / ผู้บริหาร / บัญชี ดูทั้งหมด
       receipts = await prisma.receipt.findMany({
         include: {
-          job: { include: { customer: true } },
+          job: { include: { customer: { omit: { password: true } } } },
           payments: true,
           employee: { select: { employeeName: true } },
         },

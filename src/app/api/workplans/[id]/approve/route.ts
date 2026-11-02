@@ -29,6 +29,10 @@ export async function PATCH(req: NextRequest, { params }: Params) {
     return forbiddenResponse("คุณไม่มีสิทธิ์อนุมัติแผนงานนี้");
   }
 
+  if (workPlan.job.status !== "APPROVE" || workPlan.status !== "DRAFT") {
+    return errorResponse("แผนงานนี้ไม่อยู่ในสถานะที่อนุมัติได้", 422);
+  }
+
   try {
     const updated = await prisma.$transaction(async (tx) => {
       // อัปเดตสถานะ WorkPlan เป็น APPROVED

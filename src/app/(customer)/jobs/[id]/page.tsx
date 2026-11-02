@@ -242,11 +242,7 @@ export default function CustomerJobDetailPage({
     setActionLoading(true);
     setActionError(null);
     try {
-      const res = await fetch(`/api/jobs/${id}`, {
-        method: "PATCH",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ status: "ACCEPTED" }),
-      });
+      const res = await fetch(`/api/jobs/${id}/accept`, { method: "PATCH" });
       const data = await res.json();
       if (!res.ok) {
         setActionError(data.message ?? "เกิดข้อผิดพลาด");

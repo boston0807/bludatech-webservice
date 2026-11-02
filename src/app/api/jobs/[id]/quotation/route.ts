@@ -37,9 +37,13 @@ export async function POST(req: NextRequest, { params }: Params) {
     });
     if (!job) return notFoundResponse("ไม่พบใบงาน");
 
-    // ตรวจสอบว่ายังไม่มีใบเสนอราคา
-    if (job.quotation) {
+    // ใบเสนอราคาเดิมต้องถูกปฏิเสธแล้วเท่านั้นจึงจะออกใหม่ได้
+    if (job.quotation && job.quotation.status !== "REJECTED") {
       return errorResponse("ใบงานนี้มีใบเสนอราคาแล้ว", 409);
+    }
+
+    if (job.status !== "PASS_SURVEY" && job.status !== "REQUEST_EDIT") {
+      return errorResponse("ใบงานนี้ไม่อยู่ในสถานะที่จัดทำใบเสนอราคาได้", 422);
     }
 
     const body = await req.json();
@@ -50,11 +54,17 @@ export async function POST(req: NextRequest, { params }: Params) {
 
     // สร้าง quotation และอัปเดต job status และ jobWage ใน transaction
     const [quotation] = await prisma.$transaction([
-      prisma.quotation.create({
-        data: {
+      prisma.quotation.upsert({
+        where: { jobId },
+        create: {
           jobId,
           totalAmount: parsed.data.totalAmount,
           status: "PENDING",
+        },
+        update: {
+          totalAmount: parsed.data.totalAmount,
+          status: "PENDING",
+          rejectNote: null,
         },
       }),
       prisma.job.update({

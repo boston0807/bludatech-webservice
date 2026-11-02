@@ -30,11 +30,16 @@ export default function AccountantQuotationsPage() {
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
-    fetch("/api/jobs?status=PASS_SURVEY")
-      .then((r) => r.json())
-      .then((d) => {
-        if (d.success) setJobs(d.data);
-        else setError(d.message ?? "โหลดข้อมูลไม่สำเร็จ");
+    // รวมใบงานที่ลูกค้าขอแก้ไขใบเสนอราคา เพื่อให้ออกใบใหม่ได้
+    Promise.all(
+      ["PASS_SURVEY", "REQUEST_EDIT"].map((status) =>
+        fetch(`/api/jobs?status=${status}`).then((r) => r.json())
+      )
+    )
+      .then((results) => {
+        const failed = results.find((d) => !d.success);
+        if (failed) setError(failed.message ?? "โหลดข้อมูลไม่สำเร็จ");
+        else setJobs(results.flatMap((d) => d.data));
       })
       .catch(() => setError("โหลดข้อมูลไม่สำเร็จ"))
       .finally(() => setLoading(false));

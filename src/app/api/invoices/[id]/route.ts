@@ -21,7 +21,7 @@ export async function GET(req: NextRequest, { params }: Params) {
       payments: true,
       job: {
         include: {
-          customer: true,
+          customer: { omit: { password: true } },
           quotation: true,
         },
       },

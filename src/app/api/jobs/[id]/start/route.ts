@@ -2,7 +2,7 @@
 import { NextRequest } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { verifyToken, AUTH_COOKIE_NAME } from "@/lib/auth";
-import { successResponse, errorResponse, unauthorizedResponse, forbiddenResponse, notFoundResponse } from "@/lib/api-response";
+import { ApiError, successResponse, errorResponse, unauthorizedResponse, forbiddenResponse, notFoundResponse } from "@/lib/api-response";
 
 type Params = { params: Promise<{ id: string }> };
 
@@ -27,29 +27,38 @@ export async function PATCH(req: NextRequest, { params }: Params) {
   // ตัดสต็อกอะไหล่จริงตามที่จองใน workPlan
   const workPlan = await prisma.workPlan.findUnique({
     where: { jobId: id },
-    include: { materials: true },
+    include: { materials: { include: { material: true } } },
   });
 
   try {
     await prisma.$transaction(async (tx) => {
-      if (workPlan && workPlan.materials.length > 0) {
-        for (const wpMat of workPlan.materials) {
-          await tx.material.update({
-            where: { id: wpMat.materialId },
-            data: { stockQuantity: { decrement: wpMat.quantity } },
-          });
-        }
-      }
-
-      await tx.job.update({
-        where: { id },
+      // เปลี่ยนสถานะแบบมีเงื่อนไขก่อน กันการตัดสต็อกซ้ำเมื่อกดเริ่มงานพร้อมกัน
+      const started = await tx.job.updateMany({
+        where: { id, status: "PLAN_APPROVED" },
         data: { status: "IN_PROGRESS" },
       });
+      if (started.count === 0) {
+        throw new ApiError("ใบงานนี้เริ่มปฏิบัติงานไปแล้ว", 409);
+      }
+
+      if (workPlan && workPlan.materials.length > 0) {
+        for (const wpMat of workPlan.materials) {
+          // ตัดสต็อกเฉพาะเมื่อมีของเพียงพอ ถ้าไม่พอจะ rollback ทั้ง transaction
+          const deducted = await tx.material.updateMany({
+            where: { id: wpMat.materialId, stockQuantity: { gte: wpMat.quantity } },
+            data: { stockQuantity: { decrement: wpMat.quantity } },
+          });
+          if (deducted.count === 0) {
+            throw new ApiError(`อะไหล่ "${wpMat.material.materialName}" ในคลังไม่เพียงพอ`, 422);
+          }
+        }
+      }
     });
 
     const updated = await prisma.job.findUnique({ where: { id } });
     return successResponse(updated, "เริ่มปฏิบัติงานสำเร็จและตัดสต็อกอะไหล่เรียบร้อย");
   } catch (error: any) {
+    if (error instanceof ApiError) return errorResponse(error.message, error.status);
     return errorResponse(error.message || "เกิดข้อผิดพลาด", 500);
   }
 }

@@ -1,6 +1,13 @@
 // src/lib/api-response.ts
 import { NextResponse } from "next/server";
 
+// โยนใน transaction เพื่อ rollback และตอบกลับด้วย status ที่กำหนด
+export class ApiError extends Error {
+  constructor(message: string, public status: number) {
+    super(message);
+  }
+}
+
 export function successResponse<T>(data: T, messageOrStatus: string | number = 200) {
   const status = typeof messageOrStatus === "number" ? messageOrStatus : 200;
   const message = typeof messageOrStatus === "string" ? messageOrStatus : undefined;

@@ -52,7 +52,10 @@ export async function POST(req: NextRequest, { params }: Params) {
         totalAmount: job.quotation.totalAmount,
         status: "UNPAID",
       },
-      include: { job: { include: { customer: true } }, employee: true },
+      include: {
+        job: { include: { customer: { omit: { password: true } } } },
+        employee: { select: { employeeName: true } },
+      },
     });
 
     // ส่งอีเมลแจ้งลูกค้าว่ามีใบแจ้งหนี้พร้อมชำระ (fire-and-forget)
@@ -88,7 +91,7 @@ export async function GET(req: NextRequest, { params }: Params) {
       employee: { select: { employeeName: true } },
       job: {
         include: {
-          customer: true,
+          customer: { omit: { password: true } },
           quotation: true,
         },
       },
@@ -96,5 +99,8 @@ export async function GET(req: NextRequest, { params }: Params) {
   });
 
   if (!receipt) return notFoundResponse("ไม่พบใบแจ้งหนี้");
+  if (payload.role === "CUSTOMER" && receipt.job.customerId !== payload.sub) {
+    return forbiddenResponse("คุณไม่มีสิทธิ์ดูใบแจ้งหนี้นี้");
+  }
   return successResponse(receipt);
 }

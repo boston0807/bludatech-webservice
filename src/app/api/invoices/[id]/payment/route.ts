@@ -2,7 +2,7 @@
 import { NextRequest } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { verifyToken, AUTH_COOKIE_NAME } from "@/lib/auth";
-import { successResponse, errorResponse, unauthorizedResponse, notFoundResponse } from "@/lib/api-response";
+import { ApiError, successResponse, errorResponse, unauthorizedResponse, forbiddenResponse, notFoundResponse } from "@/lib/api-response";
 import { createPaymentSchema } from "@/lib/validations/payment";
 import { saveJobHistory } from "@/lib/service-history";
 
@@ -23,6 +23,15 @@ export async function POST(req: NextRequest, { params }: Params) {
 
   if (!receipt) return notFoundResponse("ไม่พบใบแจ้งหนี้");
 
+  const isOwner = payload.role === "CUSTOMER" && receipt.job.customerId === payload.sub;
+  if (!isOwner && payload.role !== "ACCOUNTANT" && payload.role !== "ADMIN") {
+    return forbiddenResponse("คุณไม่มีสิทธิ์ชำระใบแจ้งหนี้นี้");
+  }
+
+  if (receipt.status !== "UNPAID") {
+    return errorResponse("ใบแจ้งหนี้นี้ไม่อยู่ในสถานะรอชำระเงิน", 409);
+  }
+
   const body = await req.json();
   const parsed = createPaymentSchema.safeParse({ ...body, receiptId });
   if (!parsed.success) {
@@ -31,8 +40,21 @@ export async function POST(req: NextRequest, { params }: Params) {
 
   const { amount, paymentMethod, slipUrl } = parsed.data;
 
+  if (!receipt.totalAmount.equals(amount)) {
+    return errorResponse("จำนวนเงินต้องเท่ากับยอดในใบแจ้งหนี้", 422);
+  }
+
   try {
     const result = await prisma.$transaction(async (tx) => {
+      // อัปเดตสถานะ Receipt เป็น PAID แบบมีเงื่อนไข กันการชำระซ้ำเมื่อมีคำขอพร้อมกัน
+      const paidReceipt = await tx.receipt.updateMany({
+        where: { id: receiptId, status: "UNPAID" },
+        data: { status: "PAID" },
+      });
+      if (paidReceipt.count === 0) {
+        throw new ApiError("ใบแจ้งหนี้นี้ไม่อยู่ในสถานะรอชำระเงิน", 409);
+      }
+
       // สร้างรายการ payment
       const payment = await tx.payment.create({
         data: {
@@ -44,17 +66,14 @@ export async function POST(req: NextRequest, { params }: Params) {
         },
       });
 
-      // อัปเดตสถานะ Receipt เป็น PAID
-      await tx.receipt.update({
-        where: { id: receiptId },
-        data: { status: "PAID" },
-      });
-
       // UC16 ชำระเงินแล้วต่อด้วย UC17 บันทึกประวัติใน transaction เดียวกัน
-      await tx.job.update({
-        where: { id: receipt.jobId },
+      const paidJob = await tx.job.updateMany({
+        where: { id: receipt.jobId, status: "ACCEPTED" },
         data: { status: "PAID" },
       });
+      if (paidJob.count === 0) {
+        throw new ApiError("ใบงานนี้ไม่อยู่ในสถานะที่ชำระเงินได้", 409);
+      }
 
       await saveJobHistory(tx, receipt.jobId);
 
@@ -63,6 +82,7 @@ export async function POST(req: NextRequest, { params }: Params) {
 
     return successResponse(result, "ชำระเงินสำเร็จ");
   } catch (error: any) {
+    if (error instanceof ApiError) return errorResponse(error.message, error.status);
     return errorResponse(error.message || "เกิดข้อผิดพลาดในการชำระเงิน", 500);
   }
 }
