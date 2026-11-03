@@ -4,6 +4,7 @@ import { prisma } from "@/lib/prisma";
 import { verifyToken, AUTH_COOKIE_NAME } from "@/lib/auth";
 import { successResponse, errorResponse, unauthorizedResponse, forbiddenResponse, notFoundResponse } from "@/lib/api-response";
 import { createWorkPlanSchema } from "@/lib/validations/workplan";
+import { sendWorkPlanCreatedEmail } from "@/lib/email";
 
 type Params = { params: Promise<{ id: string }> };
 
@@ -19,7 +20,7 @@ export async function POST(req: NextRequest, { params }: Params) {
   }
 
   const { id: jobId } = await params;
-  const job = await prisma.job.findUnique({ where: { id: jobId } });
+  const job = await prisma.job.findUnique({ where: { id: jobId }, include: { customer: true } });
   if (!job) return notFoundResponse("ไม่พบใบงาน");
   if (job.status !== "APPROVE") {
     return errorResponse("ใบงานต้องอยู่ในสถานะ APPROVE (ลูกนอนุมัติใบเสนอราคาแล้ว) จึงจะทำแผนงานได้", 422);
@@ -87,6 +88,18 @@ export async function POST(req: NextRequest, { params }: Params) {
       where: { id: workPlan.id },
       include: { materials: { include: { material: true } } },
     });
+
+    // ส่งอีเมลแจ้งลูกค้าเรื่องกำหนดการ (fire-and-forget — ไม่รอผล ไม่พัง API)
+    if (job.customer?.customerEmail) {
+      sendWorkPlanCreatedEmail({
+        to: job.customer.customerEmail,
+        customerName: job.customer.customerName,
+        jobId,
+        location: workPlan.location ?? job.jobAddress,
+        startDate: workPlan.startDate,
+        endDate: workPlan.endDate,
+      });
+    }
 
     return successResponse(fullPlan, "สร้างแผนงานและจองอุปกรณ์สำเร็จ");
   } catch (error: any) {

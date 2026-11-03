@@ -7,14 +7,14 @@ import { saveJobHistory } from "@/lib/service-history";
 
 type Params = { params: Promise<{ id: string }> };
 
-// POST /api/jobs/:id/history - UC17 บันทึกประวัติการให้บริการ
+// POST /api/jobs/:id/history - UC17 ธุรการ (Admin) อนุมัติบันทึกประวัติการให้บริการ
 export async function POST(req: NextRequest, { params }: Params) {
   const token = req.cookies.get(AUTH_COOKIE_NAME)?.value;
   if (!token) return unauthorizedResponse();
   const payload = await verifyToken(token);
   if (!payload) return unauthorizedResponse();
-  if (payload.role !== "ACCOUNTANT" && payload.role !== "ADMIN") {
-    return forbiddenResponse("เฉพาะพนักงานบัญชีหรือผู้ดูแลระบบที่สามารถบันทึกประวัติได้");
+  if (payload.role !== "ADMIN") {
+    return forbiddenResponse("เฉพาะพนักงานธุรการ (Admin) ที่สามารถบันทึกประวัติได้");
   }
 
   const { id: jobId } = await params;
@@ -33,7 +33,10 @@ export async function POST(req: NextRequest, { params }: Params) {
   }
 
   try {
-    const history = await prisma.$transaction((tx) => saveJobHistory(tx, jobId));
+    const body = await req.json().catch(() => ({}));
+    const summary = typeof body?.summary === "string" ? body.summary.slice(0, 1000) : null;
+    const technicianNames = typeof body?.technicianNames === "string" ? body.technicianNames.slice(0, 255) : null;
+    const history = await prisma.$transaction((tx) => saveJobHistory(tx, jobId, { summary, technicianNames }));
 
     return successResponse(history, "บันทึกประวัติการให้บริการสำเร็จ");
   } catch (error: any) {

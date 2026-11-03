@@ -34,7 +34,11 @@ export async function GET(req: NextRequest) {
   } else if (payload.role === "ADMIN") {
     jobs = await prisma.job.findMany({
       where: status ? { status: status as never } : {},
-      include: { customer: { select: { customerName: true, customerPhone: true } } },
+      include: {
+        customer: { select: { customerName: true, customerPhone: true } },
+        quotation: { select: { totalAmount: true } },
+        receipt: { include: { payments: { orderBy: { paymentDate: "desc" } } } },
+      },
       orderBy: { createdAt: "desc" },
     });
   } else if (payload.role === "HEAD_TECHNICIAN" || payload.role === "TECHNICIAN") {
@@ -46,7 +50,11 @@ export async function GET(req: NextRequest) {
   } else if (payload.role === "ACCOUNTANT") {
     jobs = await prisma.job.findMany({
       where: status ? { status: status as never } : {},
-      include: { customer: { select: { customerName: true } } },
+      include: {
+        customer: { select: { customerName: true, customerPhone: true } },
+        quotation: { select: { totalAmount: true } },
+        receipt: { select: { id: true, status: true, totalAmount: true } },
+      },
       orderBy: { createdAt: "desc" },
     });
   } else {

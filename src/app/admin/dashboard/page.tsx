@@ -1,6 +1,6 @@
 // src/app/admin/dashboard/page.tsx
 import Link from "next/link";
-import { Users } from "lucide-react";
+import { Users, ClipboardCheck } from "lucide-react";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 
 export default function AdminDashboard() {
@@ -24,6 +24,17 @@ export default function AdminDashboard() {
           </Card>
         </Link>
 
+        <Link href="/admin/service-history">
+          <Card className="hover:shadow-md transition-shadow cursor-pointer">
+            <CardHeader className="flex flex-row items-center gap-3 pb-2">
+              <ClipboardCheck className="h-6 w-6 text-primary" />
+              <CardTitle className="text-base">บันทึกประวัติการให้บริการ</CardTitle>
+            </CardHeader>
+            <CardContent>
+              <CardDescription>ตรวจสอบใบงานที่ชำระเงินแล้ว และอนุมัติบันทึกประวัติเพื่อปิดงาน</CardDescription>
+            </CardContent>
+          </Card>
+        </Link>
       </div>
     </div>
   );

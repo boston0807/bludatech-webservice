@@ -116,7 +116,7 @@ export default function AccountantPurchasePage() {
     <div className="space-y-6">
       <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
         <div>
-          <h1 className="text-2xl font-bold tracking-tight">สั่งซื้อและจัดการคลังอุปกรณ์ (UC11)</h1>
+          <h1 className="text-2xl font-bold tracking-tight">สั่งซื้อและจัดการคลังอุปกรณ์</h1>
           <p className="text-muted-foreground">จัดการรายการอะไหล่ อัปเดตยอดสต็อก และสั่งซื้ออุปกรณ์เข้าคลัง</p>
         </div>
         <Button onClick={() => setShowAddForm(!showAddForm)} className="gap-2">

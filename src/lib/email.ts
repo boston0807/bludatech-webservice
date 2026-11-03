@@ -218,3 +218,35 @@ export async function sendInvoiceIssuedEmail(params: {
   `);
   await sendMail(to, subject, html);
 }
+
+// ─────────────────────────────────────────────
+// UC08 — ช่างสร้างแผนงานแล้ว (แจ้งกำหนดการเข้าดำเนินงาน)
+// ─────────────────────────────────────────────
+
+export async function sendWorkPlanCreatedEmail(params: {
+  to: string;
+  customerName: string;
+  jobId: string;
+  location: string;
+  startDate: Date;
+  endDate: Date;
+}): Promise<void> {
+  const { to, customerName, jobId, location, startDate, endDate } = params;
+  const fmt = (d: Date) =>
+    d.toLocaleDateString("th-TH", { year: "numeric", month: "long", day: "numeric", timeZone: "Asia/Bangkok" });
+  const subject = "🗓️ กำหนดการเข้าดำเนินงานของคุณ — Bludatech Service";
+  const html = baseTemplate("แผนงานของคุณถูกจัดทำแล้ว", `
+    <p style="color:#374151;font-size:14px;line-height:1.6;">เรียนคุณ <strong>${customerName}</strong>,</p>
+    <p style="color:#374151;font-size:14px;line-height:1.6;">
+      ทีมช่างได้จัดทำแผนงานสำหรับงานบริการลิฟต์ของคุณเรียบร้อยแล้ว โดยมีกำหนดการดังนี้
+    </p>
+    <table cellpadding="0" cellspacing="0" style="margin-top:16px;">
+      ${infoRow("หมายเลขใบงาน", jobId)}
+      ${infoRow("สถานที่", location)}
+      ${infoRow("วันที่เริ่มงาน", fmt(startDate))}
+      ${infoRow("วันที่สิ้นสุด", fmt(endDate))}
+    </table>
+    ${btn(`${APP_URL}/jobs/${jobId}`, "ดูรายละเอียดงาน")}
+  `);
+  await sendMail(to, subject, html);
+}

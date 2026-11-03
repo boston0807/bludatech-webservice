@@ -143,12 +143,14 @@ const TIMELINE_STEPS = [
   { key: "WAITING_ACCEPTANCE", label: "รอตรวจรับ" },
   { key: "ACCEPTED", label: "ตรวจรับแล้ว" },
   { key: "PAID", label: "ชำระเงิน" },
+  { key: "COMPLETED", label: "เสร็จสิ้น" },
 ];
 
 const STATUS_ORDER = TIMELINE_STEPS.map((s) => s.key);
 
 function getStepStatus(stepKey: string, currentStatus: string) {
   if (currentStatus === "CANCELLED") return "cancelled";
+  if (currentStatus === "COMPLETED") return "done";
   const stepIdx = STATUS_ORDER.indexOf(stepKey);
   const currentIdx = STATUS_ORDER.indexOf(currentStatus);
   if (stepIdx < currentIdx) return "done";

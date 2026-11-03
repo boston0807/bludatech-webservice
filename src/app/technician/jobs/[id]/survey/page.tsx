@@ -24,16 +24,27 @@ type Job = {
   service?: { elevatorModel?: string };
 };
 
-const surveyFormSchema = z.object({
-  note: z.string().optional(),
-  expenses: z.array(
-    z.object({
-      expenseName: z.string().min(1, "กรุณากรอกชื่อรายการ"),
-      quantity: z.coerce.number().int().min(1, "ต้องมากกว่า 0"),
-      price: z.coerce.number().min(0, "ราคาต้องไม่ติดลบ"),
-    })
-  ),
-});
+const surveyFormSchema = z
+  .object({
+    note: z.string().optional(),
+    noMaterials: z.boolean(),
+    expenses: z.array(
+      z.object({
+        expenseName: z.string().min(1, "กรุณากรอกชื่อรายการ"),
+        quantity: z.coerce.number().int().min(1, "ต้องมากกว่า 0"),
+        price: z.coerce.number().min(0, "ราคาต้องไม่ติดลบ"),
+      })
+    ),
+  })
+  .superRefine((data, ctx) => {
+    if (!data.noMaterials && data.expenses.length === 0) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        path: ["expenses"],
+        message: "กรุณาเพิ่มรายการอย่างน้อย 1 รายการ หรือเลือก \"ไม่ต้องใช้อะไหล่/วัสดุ\"",
+      });
+    }
+  });
 
 type SurveyFormData = z.infer<typeof surveyFormSchema>;
 
@@ -45,12 +56,20 @@ export default function SurveyPage({ params }: { params: Promise<{ id: string }>
   const [serverError, setServerError] = useState<string | null>(null);
   const [success, setSuccess] = useState(false);
 
-  const { register, handleSubmit, control, formState: { errors, isSubmitting } } = useForm<SurveyFormData>({
+  const { register, handleSubmit, control, watch, formState: { errors, isSubmitting } } = useForm<SurveyFormData>({
     resolver: zodResolver(surveyFormSchema),
-    defaultValues: { expenses: [{ expenseName: "", quantity: 1, price: 0 }] },
+    defaultValues: { noMaterials: false, expenses: [{ expenseName: "", quantity: 1, price: 0 }] },
   });
 
-  const { fields, append, remove } = useFieldArray({ control, name: "expenses" });
+  const { fields, append, remove, replace } = useFieldArray({ control, name: "expenses" });
+  const noMaterials = watch("noMaterials");
+
+  const noMaterialsField = register("noMaterials", {
+    onChange: (e) => {
+      if (e.target.checked) replace([]);
+      else replace([{ expenseName: "", quantity: 1, price: 0 }]);
+    },
+  });
 
   useEffect(() => {
     fetch(`/api/jobs/${id}`)
@@ -75,7 +94,7 @@ export default function SurveyPage({ params }: { params: Promise<{ id: string }>
       }
 
       // 2. บันทึก expenses (ถ้ามี)
-      const validExpenses = data.expenses.filter((e) => e.expenseName.trim());
+      const validExpenses = data.noMaterials ? [] : data.expenses.filter((e) => e.expenseName.trim());
       if (validExpenses.length > 0) {
         const expRes = await fetch(`/api/jobs/${id}/expenses`, {
           method: "POST",
@@ -156,7 +175,7 @@ export default function SurveyPage({ params }: { params: Promise<{ id: string }>
                 <CardTitle className="text-base">รายการอะไหล่ / ค่าใช้จ่าย</CardTitle>
                 <CardDescription>ประเมินวัสดุและอะไหล่ที่ต้องใช้</CardDescription>
               </div>
-              {!alreadySurveyed && (
+              {!alreadySurveyed && !noMaterials && (
                 <Button
                   type="button"
                   variant="outline"
@@ -170,6 +189,24 @@ export default function SurveyPage({ params }: { params: Promise<{ id: string }>
             </div>
           </CardHeader>
           <CardContent className="space-y-3">
+            <label className="flex items-center gap-2 text-sm cursor-pointer select-none w-fit">
+              <input
+                type="checkbox"
+                className="h-4 w-4 rounded border-input accent-primary"
+                disabled={alreadySurveyed}
+                {...noMaterialsField}
+              />
+              ไม่ต้องใช้อะไหล่/วัสดุ
+            </label>
+
+            {errors.expenses?.root?.message || errors.expenses?.message ? (
+              <p className="text-destructive text-xs">
+                {errors.expenses?.root?.message ?? errors.expenses?.message}
+              </p>
+            ) : null}
+
+            {!noMaterials && (
+            <>
             {/* Header row */}
             <div className="grid grid-cols-12 gap-2 text-xs font-medium text-muted-foreground px-1">
               <span className="col-span-6">ชื่อรายการ</span>
@@ -217,6 +254,8 @@ export default function SurveyPage({ params }: { params: Promise<{ id: string }>
                 </div>
               </div>
             ))}
+            </>
+            )}
           </CardContent>
         </Card>
 

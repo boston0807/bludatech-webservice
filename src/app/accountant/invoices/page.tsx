@@ -89,7 +89,7 @@ export default function AccountantInvoicesPage() {
   return (
     <div className="space-y-8">
       <div>
-        <h1 className="text-2xl font-bold tracking-tight">ออกใบแจ้งหนี้และชำระเงิน (UC15, UC16)</h1>
+        <h1 className="text-2xl font-bold tracking-tight">ออกใบแจ้งหนี้และชำระเงิน</h1>
         <p className="text-muted-foreground">ออกใบแจ้งหนี้สำหรับงานที่ตรวจรับแล้ว และตรวจสอบการชำระเงินของลูกค้า</p>
       </div>
 

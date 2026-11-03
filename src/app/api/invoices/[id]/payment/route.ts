@@ -4,7 +4,6 @@ import { prisma } from "@/lib/prisma";
 import { verifyToken, AUTH_COOKIE_NAME } from "@/lib/auth";
 import { ApiError, successResponse, errorResponse, unauthorizedResponse, forbiddenResponse, notFoundResponse } from "@/lib/api-response";
 import { createPaymentSchema } from "@/lib/validations/payment";
-import { saveJobHistory } from "@/lib/service-history";
 
 type Params = { params: Promise<{ id: string }> };
 
@@ -66,7 +65,7 @@ export async function POST(req: NextRequest, { params }: Params) {
         },
       });
 
-      // UC16 ชำระเงินแล้วต่อด้วย UC17 บันทึกประวัติใน transaction เดียวกัน
+      // UC16 ชำระเงินแล้ว ใบงานเป็น PAID และรอธุรการ (Admin) อนุมัติบันทึกประวัติ (UC17)
       const paidJob = await tx.job.updateMany({
         where: { id: receipt.jobId, status: "ACCEPTED" },
         data: { status: "PAID" },
@@ -74,8 +73,6 @@ export async function POST(req: NextRequest, { params }: Params) {
       if (paidJob.count === 0) {
         throw new ApiError("ใบงานนี้ไม่อยู่ในสถานะที่ชำระเงินได้", 409);
       }
-
-      await saveJobHistory(tx, receipt.jobId);
 
       return payment;
     });

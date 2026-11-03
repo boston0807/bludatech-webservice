@@ -1,7 +1,13 @@
 import { Prisma } from "@prisma/client";
 import { ApiError } from "@/lib/api-response";
 
-export async function saveJobHistory(tx: Prisma.TransactionClient, jobId: string) {
+type HistoryDetails = { summary?: string | null; technicianNames?: string | null };
+
+export async function saveJobHistory(
+  tx: Prisma.TransactionClient,
+  jobId: string,
+  details: HistoryDetails = {}
+) {
   const job = await tx.job.findUnique({
     where: { id: jobId },
     include: { quotation: true },
@@ -27,8 +33,8 @@ export async function saveJobHistory(tx: Prisma.TransactionClient, jobId: string
       jobType: job.jobType,
       completedDate,
       totalCost: job.quotation?.totalAmount || job.jobWage,
-      technicianNames: "ทีมช่างผู้ปฏิบัติงาน",
-      summary: job.jobNote || "บริการเสร็จสิ้นสมบูรณ์",
+      technicianNames: details.technicianNames?.trim() || "ทีมช่างผู้ปฏิบัติงาน",
+      summary: details.summary?.trim() || job.jobNote || "บริการเสร็จสิ้นสมบูรณ์",
     },
   });
 
