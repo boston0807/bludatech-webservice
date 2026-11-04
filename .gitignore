@@ -53,4 +53,5 @@ next-env.d.ts
 /task
 *.drawio
 *.mmd
-/specs
+*.png
+
