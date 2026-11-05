@@ -4,6 +4,9 @@ import { prisma } from "@/lib/prisma";
 import { verifyToken, AUTH_COOKIE_NAME } from "@/lib/auth";
 import { ApiError, successResponse, errorResponse, unauthorizedResponse, forbiddenResponse, notFoundResponse } from "@/lib/api-response";
 import { createPaymentSchema } from "@/lib/validations/payment";
+import { transitionJob } from "@/lib/job-status";
+import { Notify } from "@/lib/notifications";
+import { linkAttachments, parseAttachmentIds } from "@/lib/attachments";
 
 type Params = { params: Promise<{ id: string }> };
 
@@ -17,7 +20,7 @@ export async function POST(req: NextRequest, { params }: Params) {
   const { id: receiptId } = await params;
   const receipt = await prisma.receipt.findUnique({
     where: { id: receiptId },
-    include: { job: true },
+    include: { job: { include: { customer: { select: { customerName: true } } } } },
   });
 
   if (!receipt) return notFoundResponse("ไม่พบใบแจ้งหนี้");
@@ -38,6 +41,11 @@ export async function POST(req: NextRequest, { params }: Params) {
   }
 
   const { amount, paymentMethod, slipUrl } = parsed.data;
+
+  const attachmentIds = parseAttachmentIds(body?.attachmentIds) ?? [];
+  if (payload.role === "CUSTOMER" && paymentMethod === "TRANSFER" && attachmentIds.length === 0 && !slipUrl) {
+    return errorResponse("กรุณาแนบสลิปการโอนเงิน", 422);
+  }
 
   if (!receipt.totalAmount.equals(amount)) {
     return errorResponse("จำนวนเงินต้องเท่ากับยอดในใบแจ้งหนี้", 422);
@@ -65,21 +73,38 @@ export async function POST(req: NextRequest, { params }: Params) {
         },
       });
 
-      // UC16 ชำระเงินแล้ว ใบงานเป็น PAID และรอธุรการ (Admin) อนุมัติบันทึกประวัติ (UC17)
-      const paidJob = await tx.job.updateMany({
-        where: { id: receipt.jobId, status: "ACCEPTED" },
-        data: { status: "PAID" },
+      // สลิปที่อัปโหลดไว้ก่อนกดยืนยัน (ไฟล์อยู่ใน Supabase Storage)
+      const slipCount = await linkAttachments(tx, {
+        ids: attachmentIds,
+        jobId: receipt.jobId,
+        category: "PAYMENT_SLIP",
+        auth: payload,
+        link: { paymentId: payment.id },
       });
-      if (paidJob.count === 0) {
-        throw new ApiError("ใบงานนี้ไม่อยู่ในสถานะที่ชำระเงินได้", 409);
-      }
 
-      return payment;
+      // UC16 ชำระเงินแล้ว ใบงานเป็น PAID และรอธุรการ (Admin) อนุมัติบันทึกประวัติ (UC17)
+      await transitionJob(tx, {
+        jobId: receipt.jobId,
+        to: "PAID",
+        role: payload.role,
+        conflictMessage: "ใบงานนี้ไม่อยู่ในสถานะที่ชำระเงินได้",
+      });
+
+      return { payment, slipCount };
     });
 
-    return successResponse(result, "ชำระเงินสำเร็จ");
-  } catch (error: any) {
+    await Notify.paymentReceived({
+      jobId: receipt.jobId,
+      receiptId,
+      customerName: receipt.job.customer.customerName,
+      amount: amount,
+      hasSlip: result.slipCount > 0 || !!slipUrl,
+    });
+
+    return successResponse(result.payment, "ชำระเงินสำเร็จ");
+  } catch (error) {
     if (error instanceof ApiError) return errorResponse(error.message, error.status);
-    return errorResponse(error.message || "เกิดข้อผิดพลาดในการชำระเงิน", 500);
+    console.error("[PAYMENT_ERROR]", error);
+    return errorResponse("เกิดข้อผิดพลาดในการชำระเงิน", 500);
   }
 }

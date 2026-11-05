@@ -14,6 +14,8 @@ import {
   forbiddenResponse,
   notFoundResponse,
 } from "@/lib/api-response";
+import { transitionJob } from "@/lib/job-status";
+import { Notify } from "@/lib/notifications";
 
 type Params = { params: Promise<{ id: string }> };
 
@@ -32,7 +34,15 @@ export async function PATCH(req: NextRequest, { params }: Params) {
   if (!auth) return unauthorizedResponse();
 
   const { id } = await params;
-  const job = await prisma.job.findUnique({ where: { id }, include: { quotation: true, receipt: true } });
+  const job = await prisma.job.findUnique({
+    where: { id },
+    include: {
+      quotation: true,
+      receipt: true,
+      customer: { select: { customerName: true } },
+      workPlan: { select: { technicians: { select: { employeeId: true } } } },
+    },
+  });
   if (!job) return notFoundResponse("ไม่พบใบงาน");
 
   if (auth.role !== "CUSTOMER" || job.customerId !== auth.sub) {
@@ -49,22 +59,32 @@ export async function PATCH(req: NextRequest, { params }: Params) {
   try {
     if (action === "REJECT") {
       const updated = await prisma.$transaction(async (tx) => {
-        const moved = await tx.job.updateMany({
-          where: { id, status: "WAITING_ACCEPTANCE" },
-          data: { status: "IN_PROGRESS", reworkNote: note!.trim() },
+        await transitionJob(tx, {
+          jobId: id,
+          to: "IN_PROGRESS",
+          role: auth.role,
+          data: { reworkNote: note!.trim() },
+          conflictMessage: "ใบงานยังไม่พร้อมให้ตรวจรับ",
         });
-        if (moved.count === 0) throw new ApiError("ใบงานยังไม่พร้อมให้ตรวจรับ", 422);
         return tx.job.findUnique({ where: { id } });
+      });
+      await Notify.workRejected({
+        jobId: id,
+        customerName: job.customer.customerName,
+        technicianIds: job.workPlan?.technicians.map((t) => t.employeeId) ?? [],
+        note: note!.trim(),
       });
       return successResponse(updated, "ส่งงานกลับให้ช่างแก้ไขแล้ว");
     }
 
     const result = await prisma.$transaction(async (tx) => {
-      const moved = await tx.job.updateMany({
-        where: { id, status: "WAITING_ACCEPTANCE" },
-        data: { status: "ACCEPTED", reworkNote: null },
+      await transitionJob(tx, {
+        jobId: id,
+        to: "ACCEPTED",
+        role: auth.role,
+        data: { reworkNote: null },
+        conflictMessage: "ใบงานยังไม่พร้อมให้ตรวจรับ",
       });
-      if (moved.count === 0) throw new ApiError("ใบงานยังไม่พร้อมให้ตรวจรับ", 422);
       await tx.workPlan.updateMany({ where: { jobId: id }, data: { status: "FINISHED" } });
 
       // ออกใบแจ้งหนี้ร่างอัตโนมัติจากยอดใบเสนอราคาที่อนุมัติแล้ว (ถ้ายอด 0 ไม่ต้องเก็บเงิน → ไม่ออก)
@@ -78,6 +98,12 @@ export async function PATCH(req: NextRequest, { params }: Params) {
 
       const updatedJob = await tx.job.findUnique({ where: { id } });
       return { job: updatedJob, receipt };
+    });
+
+    await Notify.workAccepted({
+      jobId: id,
+      customerName: job.customer.customerName,
+      hasDraftInvoice: result.receipt?.status === "DRAFT",
     });
 
     return successResponse(result, "ตรวจรับงานสำเร็จ ระบบส่งข้อมูลให้ฝ่ายบัญชีออกใบแจ้งหนี้แล้ว");

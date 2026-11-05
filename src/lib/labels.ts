@@ -52,6 +52,25 @@ export const ROLE_LABEL: Record<string, string> = {
   ACCOUNTANT: "บัญชี",
 };
 
+export const STOCK_REASON_LABEL: Record<string, string> = {
+  INITIAL: "ยอดตั้งต้น",
+  RESTOCK: "รับเข้าคลัง",
+  JOB_USAGE: "เบิกใช้ในงาน",
+  ADJUSTMENT: "ปรับยอด",
+};
+
+export function thDateTime(d: string | Date | null | undefined): string {
+  if (!d) return "-";
+  return new Date(d).toLocaleString("th-TH", {
+    year: "numeric",
+    month: "short",
+    day: "numeric",
+    hour: "2-digit",
+    minute: "2-digit",
+    timeZone: "Asia/Bangkok",
+  });
+}
+
 export function thDate(d: string | Date | null | undefined): string {
   if (!d) return "-";
   return new Date(d).toLocaleDateString("th-TH", { year: "numeric", month: "short", day: "numeric", timeZone: "Asia/Bangkok" });

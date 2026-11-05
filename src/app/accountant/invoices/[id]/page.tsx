@@ -6,6 +6,7 @@ import { ArrowLeft, CheckCircle2, CreditCard, FileText, Loader2 } from "lucide-r
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
+import { AttachmentThumb } from "@/components/attachments";
 
 type Receipt = {
   id: string;
@@ -20,6 +21,7 @@ type Receipt = {
     paymentMethod: string;
     paymentDate: string;
     slipUrl?: string | null;
+    attachments?: Array<{ id: string; fileName: string; mimeType: string }>;
   }>;
   job: {
     id: string;
@@ -159,13 +161,29 @@ export default function AccountantInvoiceDetailPage({ params }: { params: Promis
                       </div>
                       <div className="text-right">
                         <p className="font-semibold">{Number(payment.amount).toLocaleString("th-TH", { minimumFractionDigits: 2 })} บาท</p>
+                        {/* ข้อมูลเก่าก่อนมีระบบแนบไฟล์: ลูกค้าวางลิงก์สลิปเอง */}
                         {payment.slipUrl && (
                           <a href={payment.slipUrl} target="_blank" rel="noreferrer" className="text-primary underline text-xs">
-                            ดูสลิป
+                            ดูสลิป (ลิงก์)
                           </a>
                         )}
                       </div>
                     </div>
+                    {payment.attachments && payment.attachments.length > 0 ? (
+                      <div className="mt-3 space-y-1.5 border-t pt-3">
+                        <p className="text-xs text-muted-foreground">สลิป / หลักฐานการชำระเงิน (คลิกเพื่อดูขนาดเต็ม)</p>
+                        <div className="flex flex-wrap gap-2">
+                          {payment.attachments.map((a) => (
+                            <AttachmentThumb key={a.id} attachment={a} />
+                          ))}
+                        </div>
+                      </div>
+                    ) : (
+                      !payment.slipUrl &&
+                      payment.paymentMethod === "TRANSFER" && (
+                        <p className="mt-2 text-xs text-amber-700">ไม่มีสลิปแนบมากับการโอนเงินนี้</p>
+                      )
+                    )}
                   </div>
                 ))}
               </div>

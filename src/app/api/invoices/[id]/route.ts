@@ -18,7 +18,12 @@ export async function GET(req: NextRequest, { params }: Params) {
     where: { id },
     include: {
       employee: { select: { employeeName: true } },
-      payments: true,
+      payments: {
+        orderBy: { paymentDate: "asc" },
+        include: {
+          attachments: { select: { id: true, fileName: true, mimeType: true, sizeBytes: true, createdAt: true } },
+        },
+      },
       job: {
         include: {
           customer: { omit: { password: true } },

@@ -11,7 +11,9 @@ import {
   notFoundResponse,
 } from "@/lib/api-response";
 import { createWorkPlanSchema } from "@/lib/validations/workplan";
+import { NOT_ELEVATOR } from "@/lib/elevator-catalog";
 import { sendWorkPlanCreatedEmail } from "@/lib/email";
+import { Notify } from "@/lib/notifications";
 import { findScheduleConflicts, describeConflicts } from "@/lib/work-schedule";
 
 type Params = { params: Promise<{ id: string }> };
@@ -53,7 +55,9 @@ export async function POST(req: NextRequest, { params }: Params) {
   }
 
   if (materials?.length) {
-    const found = await prisma.material.count({ where: { id: { in: materials.map((m) => m.materialId) } } });
+    const found = await prisma.material.count({
+      where: { id: { in: materials.map((m) => m.materialId) }, ...NOT_ELEVATOR },
+    });
     if (found !== materials.length) return errorResponse("พบรายการอะไหล่ที่ไม่มีในระบบ", 422);
   }
 
@@ -121,6 +125,8 @@ export async function POST(req: NextRequest, { params }: Params) {
         endDate: workPlan.endDate,
       });
     }
+
+    await Notify.workPlanCreated({ jobId, customerId: job.customerId });
 
     return successResponse(fullPlan, "สร้างแผนงาน มอบหมายช่าง และจองอุปกรณ์สำเร็จ");
   } catch (error) {

@@ -8,8 +8,9 @@ import { Loader2, ChevronLeft, FileText, CheckCircle2, CreditCard } from "lucide
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
-import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { AttachmentThumb, AttachmentUploader } from "@/components/attachments";
+import type { AttachmentInfo } from "@/lib/upload-client";
 
 type Payment = {
   id: string;
@@ -17,6 +18,8 @@ type Payment = {
   amount: string;
   paymentMethod: string;
   verified: boolean;
+  slipUrl?: string | null;
+  attachments?: Pick<AttachmentInfo, "id" | "fileName" | "mimeType">[];
 };
 
 type Receipt = {
@@ -51,7 +54,7 @@ export default function CustomerInvoicePage({ params }: { params: Promise<{ id: 
 
   // Payment form states
   const [paymentMethod, setPaymentMethod] = useState<"TRANSFER" | "CASH" | "CREDIT_CARD">("TRANSFER");
-  const [slipUrl, setSlipUrl] = useState("");
+  const [slips, setSlips] = useState<AttachmentInfo[]>([]);
   const [submitting, setSubmitting] = useState(false);
   const [successMsg, setSuccessMsg] = useState<string | null>(null);
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
@@ -75,6 +78,10 @@ export default function CustomerInvoicePage({ params }: { params: Promise<{ id: 
   const handlePayment = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!receipt) return;
+    if (paymentMethod === "TRANSFER" && slips.length === 0) {
+      setErrorMsg("กรุณาแนบสลิปการโอนเงิน");
+      return;
+    }
 
     setSubmitting(true);
     setErrorMsg(null);
@@ -87,7 +94,7 @@ export default function CustomerInvoicePage({ params }: { params: Promise<{ id: 
         body: JSON.stringify({
           amount: parseFloat(receipt.totalAmount),
           paymentMethod,
-          slipUrl: slipUrl || undefined,
+          attachmentIds: slips.map((s) => s.id),
         }),
       });
       const data = await res.json();
@@ -96,6 +103,7 @@ export default function CustomerInvoicePage({ params }: { params: Promise<{ id: 
         return;
       }
       setSuccessMsg("ชำระเงินสำเร็จเรียบร้อย");
+      setSlips([]);
       fetchReceipt();
     } catch {
       setErrorMsg("เกิดข้อผิดพลาดในการชำระเงิน");
@@ -181,9 +189,18 @@ export default function CustomerInvoicePage({ params }: { params: Promise<{ id: 
                 <CheckCircle2 className="h-4 w-4 text-green-600" /> ชำระเงินเรียบร้อยแล้ว
               </p>
               {receipt.payments.map((p) => (
-                <p key={p.id} className="text-xs">
-                  ชำระเมื่อ: {new Date(p.paymentDate).toLocaleString("th-TH")} | วิธี: {p.paymentMethod} | จำนวน: {parseFloat(p.amount).toLocaleString("th-TH", { minimumFractionDigits: 2 })} บาท
-                </p>
+                <div key={p.id} className="space-y-1.5">
+                  <p className="text-xs">
+                    ชำระเมื่อ: {new Date(p.paymentDate).toLocaleString("th-TH")} | วิธี: {p.paymentMethod} | จำนวน: {parseFloat(p.amount).toLocaleString("th-TH", { minimumFractionDigits: 2 })} บาท
+                  </p>
+                  {p.attachments && p.attachments.length > 0 && (
+                    <div className="flex flex-wrap gap-2">
+                      {p.attachments.map((a) => (
+                        <AttachmentThumb key={a.id} attachment={a} size="sm" />
+                      ))}
+                    </div>
+                  )}
+                </div>
               ))}
             </div>
           )}
@@ -215,12 +232,17 @@ export default function CustomerInvoicePage({ params }: { params: Promise<{ id: 
               </div>
 
               <div className="space-y-2">
-                <Label htmlFor="slipUrl">ลิงก์หลักฐานการโอนเงิน (Slip URL / หมายเหตุ)</Label>
-                <Input
-                  id="slipUrl"
-                  placeholder="เช่น https://example.com/slip.jpg หรือ โอนผ่าน SCB 12:34 น."
-                  value={slipUrl}
-                  onChange={(e) => setSlipUrl(e.target.value)}
+                <Label>
+                  หลักฐานการชำระเงิน{paymentMethod === "TRANSFER" ? " (จำเป็น)" : " (ถ้ามี)"}
+                </Label>
+                <AttachmentUploader
+                  jobId={jobId}
+                  category="PAYMENT_SLIP"
+                  value={slips}
+                  onChange={setSlips}
+                  max={3}
+                  disabled={submitting}
+                  label="แนบสลิป (รูปหรือ PDF)"
                 />
               </div>
 

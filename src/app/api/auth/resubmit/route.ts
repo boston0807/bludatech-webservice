@@ -7,6 +7,7 @@ import bcrypt from "bcryptjs";
 import { prisma } from "@/lib/prisma";
 import { resubmitSchema } from "@/lib/validations/auth";
 import { successResponse, errorResponse } from "@/lib/api-response";
+import { Notify } from "@/lib/notifications";
 
 const INVALID = "Username หรือรหัสผ่านไม่ถูกต้อง";
 
@@ -62,6 +63,8 @@ export async function POST(req: NextRequest) {
     },
   });
   if (changed.count === 0) return errorResponse("สถานะบัญชีเปลี่ยนไปแล้ว กรุณาลองใหม่", 409);
+
+  await Notify.customerRegistered({ customerName, resubmitted: true });
 
   return successResponse({ message: "ส่งข้อมูลให้เจ้าหน้าที่ตรวจสอบอีกครั้งแล้ว กรุณารอการอนุมัติ" });
 }

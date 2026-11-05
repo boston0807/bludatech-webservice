@@ -12,6 +12,9 @@ import {
   notFoundResponse,
 } from "@/lib/api-response";
 import { createSurveySchema } from "@/lib/validations/survey";
+import { transitionJob } from "@/lib/job-status";
+import { Notify } from "@/lib/notifications";
+import { linkAttachments, parseAttachmentIds } from "@/lib/attachments";
 
 type Params = { params: Promise<{ id: string }> };
 
@@ -21,7 +24,7 @@ export async function POST(req: NextRequest, { params }: Params) {
   if (!["HEAD_TECHNICIAN", "TECHNICIAN"].includes(auth.role)) return forbiddenResponse();
 
   const { id: jobId } = await params;
-  const job = await prisma.job.findUnique({ where: { id: jobId } });
+  const job = await prisma.job.findUnique({ where: { id: jobId }, include: { customer: { select: { customerName: true } } } });
   if (!job) return notFoundResponse("ไม่พบใบงาน");
   if (job.status !== "PENDING" && job.status !== "REQUEST_EDIT") {
     return errorResponse("ใบงานนี้ไม่อยู่ในสถานะที่บันทึกการสำรวจได้", 422);
@@ -41,14 +44,24 @@ export async function POST(req: NextRequest, { params }: Params) {
 
   try {
     const survey = await prisma.$transaction(async (tx) => {
-      const moved = await tx.job.updateMany({
-        where: { id: jobId, status: { in: ["PENDING", "REQUEST_EDIT"] } },
-        data: { status: "PASS_SURVEY" },
+      await transitionJob(tx, {
+        jobId,
+        to: "PASS_SURVEY",
+        role: auth.role,
+        conflictMessage: "ใบงานนี้ไม่อยู่ในสถานะที่บันทึกการสำรวจได้",
       });
-      if (moved.count === 0) throw new ApiError("ใบงานนี้ไม่อยู่ในสถานะที่บันทึกการสำรวจได้", 422);
 
       const created = await tx.survey.create({
         data: { jobId, technicianId: auth.sub, method, note: note?.trim() || null },
+      });
+
+      // รูปถ่ายหน้างานที่อัปโหลดไว้ก่อนกดบันทึก
+      await linkAttachments(tx, {
+        ids: parseAttachmentIds(body?.attachmentIds),
+        jobId,
+        category: "SURVEY",
+        auth,
+        link: { surveyId: created.id },
       });
 
       if (expenses?.length) {
@@ -60,6 +73,8 @@ export async function POST(req: NextRequest, { params }: Params) {
       }
       return created;
     });
+
+    await Notify.surveyDone({ jobId, customerName: job.customer.customerName, byEmployeeId: auth.sub });
 
     return successResponse(survey, 201);
   } catch (error) {

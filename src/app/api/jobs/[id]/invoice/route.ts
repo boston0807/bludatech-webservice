@@ -14,6 +14,7 @@ import {
   notFoundResponse,
 } from "@/lib/api-response";
 import { sendInvoiceIssuedEmail } from "@/lib/email";
+import { Notify } from "@/lib/notifications";
 
 type Params = { params: Promise<{ id: string }> };
 
@@ -58,6 +59,10 @@ export async function POST(req: NextRequest, { params }: Params) {
       });
     });
 
+    if (receipt) {
+      await Notify.invoiceIssued({ jobId, customerId: job.customerId, totalAmount: receipt.totalAmount.toString() });
+    }
+
     if (receipt && job.customer.customerEmail) {
       sendInvoiceIssuedEmail({
         to: job.customer.customerEmail,
@@ -85,7 +90,12 @@ export async function GET(req: NextRequest, { params }: Params) {
   const receipt = await prisma.receipt.findUnique({
     where: { jobId },
     include: {
-      payments: true,
+      payments: {
+        orderBy: { paymentDate: "asc" },
+        include: {
+          attachments: { select: { id: true, fileName: true, mimeType: true, sizeBytes: true, createdAt: true } },
+        },
+      },
       employee: { select: { employeeName: true } },
       job: {
         include: {

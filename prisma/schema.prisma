@@ -76,6 +76,23 @@ enum SurveyMethod {
   REMOTE
 }
 
+// เหตุผลการเปลี่ยนแปลงยอดสต็อก — ใช้ตรวจสอบย้อนหลังว่ายอดคงเหลือมาจากไหน
+enum StockMovementReason {
+  INITIAL // ยอดตั้งต้นตอนเพิ่มวัสดุใหม่
+  RESTOCK // บัญชีรับของเข้าคลัง (UC11)
+  JOB_USAGE // ตัดสต็อกตอนช่างเริ่มงาน (UC12)
+  ADJUSTMENT // ปรับยอดจากการตรวจนับ
+}
+
+// ประเภทไฟล์แนบของใบงาน (เก็บไฟล์จริงใน Supabase Storage)
+enum AttachmentCategory {
+  PAYMENT_SLIP // สลิปโอนเงินของลูกค้า (UC16)
+  SURVEY // รูปถ่ายตอนสำรวจหน้างาน (UC05)
+  SAFETY_CHECK // รูปถ่ายประกอบผลทดสอบความปลอดภัย (UC13)
+  WORK_BEFORE // รูปก่อนเริ่มงาน
+  WORK_AFTER // รูปหลังทำงานเสร็จ — หลักฐานเมื่อลูกค้าตรวจรับไม่ผ่าน
+}
+
 enum PaymentMethod {
   TRANSFER
   CASH
@@ -100,7 +117,9 @@ model Customer {
   createdAt       DateTime       @default(now()) @map("created_at")
   updatedAt       DateTime       @updatedAt @map("updated_at")
 
-  jobs Job[]
+  jobs          Job[]
+  attachments   Attachment[]
+  notifications Notification[]
 
   @@map("customers")
 }
@@ -118,6 +137,9 @@ model Employee {
   receipts        Receipt[]
   planAssignments WorkPlanTechnician[]
   safetyChecks    SafetyCheck[]
+  stockMovements  StockMovement[]
+  attachments     Attachment[]
+  notifications   Notification[]
 
   @@map("employees")
 }
@@ -140,18 +162,20 @@ model Job {
   createdAt   DateTime  @default(now()) @map("created_at")
   updatedAt   DateTime  @updatedAt @map("updated_at")
 
-  customer      Customer         @relation(fields: [customerId], references: [id])
-  installation  JobInstallation?
-  repair        JobRepair?
-  service       JobService?
-  surveys       Survey[]
-  expenses      Expense[]
-  quotation     Quotation?
-  workPlan      WorkPlan?
-  receipt       Receipt?
-  safetyChecks  SafetyCheck[]
-  parentJob     Job?             @relation("ServiceRounds", fields: [parentJobId], references: [id])
-  serviceRounds Job[]            @relation("ServiceRounds")
+  customer       Customer         @relation(fields: [customerId], references: [id])
+  installation   JobInstallation?
+  repair         JobRepair?
+  service        JobService?
+  surveys        Survey[]
+  expenses       Expense[]
+  quotation      Quotation?
+  workPlan       WorkPlan?
+  receipt        Receipt?
+  safetyChecks   SafetyCheck[]
+  stockMovements StockMovement[]
+  parentJob      Job?             @relation("ServiceRounds", fields: [parentJobId], references: [id])
+  serviceRounds  Job[]            @relation("ServiceRounds")
+  attachments    Attachment[]
 
   @@map("jobs")
 }
@@ -207,9 +231,10 @@ model Survey {
   method       SurveyMethod @default(ONSITE)
   note         String?
 
-  job        Job        @relation(fields: [jobId], references: [id])
-  technician Employee   @relation(fields: [technicianId], references: [id])
-  workPlans  WorkPlan[]
+  job         Job          @relation(fields: [jobId], references: [id])
+  technician  Employee     @relation(fields: [technicianId], references: [id])
+  workPlans   WorkPlan[]
+  attachments Attachment[]
 
   @@map("surveys")
 }
@@ -288,8 +313,29 @@ model Material {
   stockQuantity Int     @default(0) @map("stock_quantity")
 
   workPlanMaterials WorkPlanMaterial[]
+  stockMovements    StockMovement[]
 
   @@map("materials")
+}
+
+// ประวัติการเคลื่อนไหวของสต็อก — ทุกครั้งที่ stock_quantity เปลี่ยนต้องมีแถวที่นี่ (ดู recordStockMovement)
+model StockMovement {
+  id           String              @id @default(cuid()) @map("movement_id")
+  materialId   String              @map("material_id")
+  change       Int // + รับเข้า, - เบิกใช้
+  balanceAfter Int                 @map("balance_after")
+  reason       StockMovementReason
+  jobId        String?             @map("job_id")
+  employeeId   String?             @map("employee_id")
+  note         String?
+  createdAt    DateTime            @default(now()) @map("created_at")
+
+  material Material  @relation(fields: [materialId], references: [id])
+  job      Job?      @relation(fields: [jobId], references: [id])
+  employee Employee? @relation(fields: [employeeId], references: [id])
+
+  @@index([materialId, createdAt])
+  @@map("stock_movements")
 }
 
 model WorkPlanMaterial {
@@ -334,7 +380,8 @@ model Payment {
   verified      Boolean       @default(false)
   createdAt     DateTime      @default(now()) @map("created_at")
 
-  receipt Receipt @relation(fields: [receiptId], references: [id])
+  receipt     Receipt      @relation(fields: [receiptId], references: [id])
+  attachments Attachment[]
 
   @@map("payments")
 }
@@ -353,8 +400,9 @@ model SafetyCheck {
   note         String?
   checkedAt    DateTime @default(now()) @map("checked_at")
 
-  job        Job      @relation(fields: [jobId], references: [id])
-  technician Employee @relation(fields: [technicianId], references: [id])
+  job         Job          @relation(fields: [jobId], references: [id])
+  technician  Employee     @relation(fields: [technicianId], references: [id])
+  attachments Attachment[]
 
   @@map("safety_checks")
 }
@@ -375,4 +423,59 @@ model ServiceHistory {
   createdAt       DateTime @default(now()) @map("created_at")
 
   @@map("service_histories")
+}
+
+// ─────────────────────────────────────────────
+// ATTACHMENTS (ไฟล์ใน Supabase Storage bucket ส่วนตัว — เปิดดูผ่าน /api/attachments/:id เท่านั้น)
+// ─────────────────────────────────────────────
+
+model Attachment {
+  id                   String             @id @default(cuid()) @map("attachment_id")
+  jobId                String             @map("job_id")
+  category             AttachmentCategory
+  storagePath          String             @unique @map("storage_path")
+  fileName             String             @map("file_name")
+  mimeType             String             @map("mime_type")
+  sizeBytes            Int                @map("size_bytes")
+  caption              String?
+  uploadedByEmployeeId String?            @map("uploaded_by_employee_id")
+  uploadedByCustomerId String?            @map("uploaded_by_customer_id")
+  // ผูกกับเอกสารที่เกี่ยวข้องตอนกดบันทึก (ก่อนบันทึกยังเป็น null = แนบไว้ชั่วคราว)
+  surveyId             String?            @map("survey_id")
+  safetyCheckId        String?            @map("safety_check_id")
+  paymentId            String?            @map("payment_id")
+  createdAt            DateTime           @default(now()) @map("created_at")
+
+  job                Job          @relation(fields: [jobId], references: [id])
+  uploadedByEmployee Employee?    @relation(fields: [uploadedByEmployeeId], references: [id])
+  uploadedByCustomer Customer?    @relation(fields: [uploadedByCustomerId], references: [id])
+  survey             Survey?      @relation(fields: [surveyId], references: [id])
+  safetyCheck        SafetyCheck? @relation(fields: [safetyCheckId], references: [id])
+  payment            Payment?     @relation(fields: [paymentId], references: [id])
+
+  @@index([jobId, category])
+  @@map("attachments")
+}
+
+// ─────────────────────────────────────────────
+// IN-APP NOTIFICATIONS (กระดิ่งแจ้งเตือน — 1 แถวต่อผู้รับ 1 คน)
+// ─────────────────────────────────────────────
+
+model Notification {
+  id         String    @id @default(cuid()) @map("notification_id")
+  employeeId String?   @map("employee_id")
+  customerId String?   @map("customer_id")
+  type       String // เช่น QUOTATION_CREATED — ดู src/lib/notifications.ts
+  title      String
+  body       String?
+  link       String?
+  readAt     DateTime? @map("read_at")
+  createdAt  DateTime  @default(now()) @map("created_at")
+
+  employee Employee? @relation(fields: [employeeId], references: [id], onDelete: Cascade)
+  customer Customer? @relation(fields: [customerId], references: [id], onDelete: Cascade)
+
+  @@index([employeeId, createdAt])
+  @@index([customerId, createdAt])
+  @@map("notifications")
 }

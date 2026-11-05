@@ -12,6 +12,8 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
+import { AttachmentGallery, AttachmentUploader } from "@/components/attachments";
+import type { AttachmentInfo } from "@/lib/upload-client";
 
 type Job = {
   id: string;
@@ -65,6 +67,7 @@ export default function SurveyPage({ params }: { params: Promise<{ id: string }>
   const [loading, setLoading] = useState(true);
   const [serverError, setServerError] = useState<string | null>(null);
   const [success, setSuccess] = useState(false);
+  const [photos, setPhotos] = useState<AttachmentInfo[]>([]);
 
   const { register, handleSubmit, control, watch, formState: { errors, isSubmitting } } = useForm<SurveyFormData>({
     resolver: zodResolver(surveyFormSchema),
@@ -110,7 +113,12 @@ export default function SurveyPage({ params }: { params: Promise<{ id: string }>
       const surveyRes = await fetch(`/api/jobs/${id}/survey`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ method: data.method, note: data.note, expenses: validExpenses }),
+        body: JSON.stringify({
+          method: data.method,
+          note: data.note,
+          expenses: validExpenses,
+          attachmentIds: photos.map((p) => p.id),
+        }),
       });
       if (!surveyRes.ok) {
         const e = await surveyRes.json();
@@ -308,6 +316,21 @@ export default function SurveyPage({ params }: { params: Promise<{ id: string }>
               </div>
             ))}
             </>
+            )}
+          </CardContent>
+        </Card>
+
+        {/* รูปถ่ายหน้างาน — หลักฐานสภาพก่อนเริ่มงาน ใช้ประกอบการประเมินราคา */}
+        <Card>
+          <CardHeader className="pb-3">
+            <CardTitle className="text-base">รูปถ่ายหน้างาน</CardTitle>
+            <CardDescription>ถ่ายสภาพลิฟต์ / บ่อลิฟต์ / จุดที่ชำรุด เพื่อใช้ประเมินราคาและเป็นหลักฐาน</CardDescription>
+          </CardHeader>
+          <CardContent>
+            {alreadySurveyed ? (
+              <AttachmentGallery jobId={id} categories={["SURVEY"]} emptyText="ไม่มีรูปถ่ายจากการสำรวจ" />
+            ) : (
+              <AttachmentUploader jobId={id} category="SURVEY" value={photos} onChange={setPhotos} disabled={isSubmitting} />
             )}
           </CardContent>
         </Card>

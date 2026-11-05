@@ -37,4 +37,9 @@
     font-family: 'Sarabun', 'Noto Sans Thai', -apple-system, BlinkMacSystemFont, sans-serif;
     -webkit-font-smoothing: antialiased;
   }
+  /* ซ่อนปุ่มแสดงรหัสผ่าน/ปุ่มล้างที่ Edge ใส่มาเอง เพราะเรามีปุ่มรูปตาของเราแล้ว */
+  input::-ms-reveal,
+  input::-ms-clear {
+    display: none;
+  }
 }

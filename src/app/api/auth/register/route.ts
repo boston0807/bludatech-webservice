@@ -4,6 +4,7 @@ import bcrypt from "bcryptjs";
 import { prisma } from "@/lib/prisma";
 import { registerSchema } from "@/lib/validations/auth";
 import { successResponse, errorResponse } from "@/lib/api-response";
+import { Notify } from "@/lib/notifications";
 
 export async function POST(req: NextRequest) {
   try {
@@ -48,6 +49,8 @@ export async function POST(req: NextRequest) {
         createdAt: true,
       },
     });
+
+    await Notify.customerRegistered({ customerName: customer.customerName });
 
     return successResponse(
       {
