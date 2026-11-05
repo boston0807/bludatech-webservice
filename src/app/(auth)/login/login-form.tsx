@@ -125,7 +125,7 @@ export function LoginForm() {
               <Label htmlFor="username">Username</Label>
               <Input
                 id="username"
-                placeholder="กรอก Username"
+                placeholder="Username, อีเมล หรือเบอร์โทร (ลูกค้า)"
                 autoComplete="username"
                 {...register("username")}
               />

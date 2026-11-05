@@ -536,7 +536,11 @@ export default function TechnicianWorkplansPage() {
             const Icon = JOB_TYPE_ICON[job.jobType];
             const plan = job.workPlan;
             const lastCheck = job.safetyChecks?.[0];
-            const canEditPlan = job.status === "APPROVE" && (!plan || plan.status === "DRAFT" || plan.status === "REJECTED");
+            // UC08 — เฉพาะหัวหน้าช่างจัดทำ/แก้ไขแผนงาน
+            const canEditPlan =
+              me?.role === "HEAD_TECHNICIAN" &&
+              job.status === "APPROVE" &&
+              (!plan || plan.status === "DRAFT" || plan.status === "REJECTED");
             const planShortages = plan?.materials.filter((m) => shortageById.has(m.materialId)) ?? [];
             const assigned = isAssigned(job);
             return (

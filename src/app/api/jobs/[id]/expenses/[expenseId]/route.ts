@@ -10,47 +10,64 @@ import {
   notFoundResponse,
 } from "@/lib/api-response";
 import { z } from "zod";
+import { EXPENSE_EDITABLE_STATUSES, EXPENSE_LOCKED_MESSAGE, parseExpenseId } from "@/lib/expenses";
 
 type Params = { params: Promise<{ id: string; expenseId: string }> };
 
 const ALLOWED_ROLES = ["HEAD_TECHNICIAN", "TECHNICIAN", "ACCOUNTANT"] as const;
 
 const updateExpenseSchema = z.object({
-  expenseName: z.string().min(1, "กรุณากรอกชื่อรายการ").optional(),
+  expenseName: z.string().trim().min(1, "กรุณากรอกชื่อรายการ").optional(),
   quantity: z.number().int().min(1, "จำนวนต้องมากกว่า 0").optional(),
   price: z.number().min(0, "ราคาต้องไม่ติดลบ").optional(),
 });
 
-// PATCH /api/jobs/:id/expenses/:expenseId — แก้ไขรายการค่าใช้จ่าย
-export async function PATCH(req: NextRequest, { params }: Params) {
+async function authorize(req: NextRequest) {
   const token = req.cookies.get(AUTH_COOKIE_NAME)?.value;
   if (!token) return unauthorizedResponse();
   const payload = await verifyToken(token);
   if (!payload || !ALLOWED_ROLES.includes(payload.role as (typeof ALLOWED_ROLES)[number])) {
     return forbiddenResponse();
   }
+  return null;
+}
 
-  const { id: jobId, expenseId } = await params;
+// โหลดใบงาน + รายการ และตรวจว่ายังแก้ไขได้
+async function loadEditableExpense(jobId: string, rawExpenseId: string) {
+  const expenseId = parseExpenseId(rawExpenseId);
+  if (expenseId === null) return { error: notFoundResponse("ไม่พบรายการค่าใช้จ่าย") };
+
+  const job = await prisma.job.findUnique({ where: { id: jobId } });
+  if (!job) return { error: notFoundResponse("ไม่พบใบงาน") };
+
+  const expense = await prisma.expense.findFirst({ where: { id: expenseId, jobId } });
+  if (!expense) return { error: notFoundResponse("ไม่พบรายการค่าใช้จ่าย") };
+
+  if (!EXPENSE_EDITABLE_STATUSES.includes(job.status)) {
+    return { error: errorResponse(EXPENSE_LOCKED_MESSAGE, 422) };
+  }
+  return { expenseId };
+}
+
+// PATCH /api/jobs/:id/expenses/:expenseId — แก้ไขรายการค่าใช้จ่าย
+export async function PATCH(req: NextRequest, { params }: Params) {
+  const denied = await authorize(req);
+  if (denied) return denied;
+
+  const { id: jobId, expenseId: rawExpenseId } = await params;
 
   try {
-    // ตรวจสอบว่า job มีอยู่จริง
-    const job = await prisma.job.findUnique({ where: { id: jobId } });
-    if (!job) return notFoundResponse("ไม่พบใบงาน");
+    const loaded = await loadEditableExpense(jobId, rawExpenseId);
+    if ("error" in loaded) return loaded.error;
 
-    // ตรวจสอบว่า expense มีอยู่จริงและเป็นของ job นี้
-    const expense = await prisma.expense.findFirst({
-      where: { id: parseInt(expenseId, 10), jobId },
-    });
-    if (!expense) return notFoundResponse("ไม่พบรายการค่าใช้จ่าย");
-
-    const body = await req.json();
+    const body = await req.json().catch(() => ({}));
     const parsed = updateExpenseSchema.safeParse(body);
     if (!parsed.success) {
       return errorResponse("ข้อมูลไม่ถูกต้อง", 422, parsed.error.flatten().fieldErrors);
     }
 
     const updated = await prisma.expense.update({
-      where: { id: parseInt(expenseId, 10) },
+      where: { id: loaded.expenseId },
       data: {
         ...(parsed.data.expenseName !== undefined && { expenseName: parsed.data.expenseName }),
         ...(parsed.data.quantity !== undefined && { quantity: parsed.data.quantity }),
@@ -67,29 +84,16 @@ export async function PATCH(req: NextRequest, { params }: Params) {
 
 // DELETE /api/jobs/:id/expenses/:expenseId — ลบรายการค่าใช้จ่าย
 export async function DELETE(req: NextRequest, { params }: Params) {
-  const token = req.cookies.get(AUTH_COOKIE_NAME)?.value;
-  if (!token) return unauthorizedResponse();
-  const payload = await verifyToken(token);
-  if (!payload || !ALLOWED_ROLES.includes(payload.role as (typeof ALLOWED_ROLES)[number])) {
-    return forbiddenResponse();
-  }
+  const denied = await authorize(req);
+  if (denied) return denied;
 
-  const { id: jobId, expenseId } = await params;
+  const { id: jobId, expenseId: rawExpenseId } = await params;
 
   try {
-    // ตรวจสอบว่า job มีอยู่จริง
-    const job = await prisma.job.findUnique({ where: { id: jobId } });
-    if (!job) return notFoundResponse("ไม่พบใบงาน");
+    const loaded = await loadEditableExpense(jobId, rawExpenseId);
+    if ("error" in loaded) return loaded.error;
 
-    // ตรวจสอบว่า expense มีอยู่จริงและเป็นของ job นี้
-    const expense = await prisma.expense.findFirst({
-      where: { id: parseInt(expenseId, 10), jobId },
-    });
-    if (!expense) return notFoundResponse("ไม่พบรายการค่าใช้จ่าย");
-
-    await prisma.expense.delete({
-      where: { id: parseInt(expenseId, 10) },
-    });
+    await prisma.expense.delete({ where: { id: loaded.expenseId } });
 
     return successResponse({ message: "ลบรายการสำเร็จ" });
   } catch (error) {

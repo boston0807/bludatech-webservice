@@ -4,7 +4,7 @@ import { z } from "zod";
 export const loginSchema = z.object({
   username: z
     .string()
-    .min(1, "กรุณากรอก Username หรืออีเมล")
+    .min(1, "กรุณากรอก Username, อีเมล หรือเบอร์โทร")
     .max(100, "Username ยาวเกินไป"),
   password: z.string().min(1, "กรุณากรอกรหัสผ่าน"),
 });

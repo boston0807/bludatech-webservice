@@ -2,7 +2,7 @@
 import { NextRequest } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { verifyToken, AUTH_COOKIE_NAME } from "@/lib/auth";
-import { successResponse, errorResponse, unauthorizedResponse } from "@/lib/api-response";
+import { successResponse, errorResponse, unauthorizedResponse, forbiddenResponse } from "@/lib/api-response";
 
 // GET /api/invoices - ดึงรายการใบแจ้งหนี้ทั้งหมด (Receipts)
 export async function GET(req: NextRequest) {
@@ -29,8 +29,8 @@ export async function GET(req: NextRequest) {
         },
         orderBy: { createdAt: "desc" },
       });
-    } else {
-      // พนักงาน / ผู้บริหาร / บัญชี ดูทั้งหมด
+    } else if (payload.role === "ADMIN" || payload.role === "ACCOUNTANT") {
+      // ธุรการ / บัญชี ดูทั้งหมด (ช่างไม่มีสิทธิ์ดูข้อมูลการเงิน — สอดคล้องกับ /api/invoices/:id)
       receipts = await prisma.receipt.findMany({
         include: {
           job: { include: { customer: { omit: { password: true } } } },
@@ -39,6 +39,8 @@ export async function GET(req: NextRequest) {
         },
         orderBy: { createdAt: "desc" },
       });
+    } else {
+      return forbiddenResponse("คุณไม่มีสิทธิ์ดูข้อมูลใบแจ้งหนี้");
     }
 
     return successResponse(receipts);

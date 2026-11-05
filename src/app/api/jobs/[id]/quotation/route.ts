@@ -48,7 +48,7 @@ export async function POST(req: NextRequest, { params }: Params) {
       return errorResponse("ใบงานนี้ไม่อยู่ในสถานะที่จัดทำใบเสนอราคาได้", 422);
     }
 
-    const body = await req.json();
+    const body = await req.json().catch(() => ({}));
     const parsed = createQuotationBodySchema.safeParse(body);
     if (!parsed.success) {
       return errorResponse("ข้อมูลไม่ถูกต้อง", 422, parsed.error.flatten().fieldErrors);

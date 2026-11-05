@@ -2,7 +2,7 @@
 import { NextRequest } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { verifyToken, AUTH_COOKIE_NAME } from "@/lib/auth";
-import { successResponse, forbiddenResponse, unauthorizedResponse } from "@/lib/api-response";
+import { successResponse, errorResponse, forbiddenResponse, unauthorizedResponse } from "@/lib/api-response";
 
 export async function GET(req: NextRequest) {
   // Auth: อ่าน JWT จาก cookie โดยตรง
@@ -14,6 +14,9 @@ export async function GET(req: NextRequest) {
 
   const { searchParams } = new URL(req.url);
   const status = (searchParams.get("status") ?? "PENDING") as "PENDING" | "ACTIVE" | "REJECTED";
+  if (!["PENDING", "ACTIVE", "REJECTED"].includes(status)) {
+    return errorResponse("status ต้องเป็น PENDING, ACTIVE หรือ REJECTED", 422);
+  }
 
   const customers = await prisma.customer.findMany({
     where: { status },

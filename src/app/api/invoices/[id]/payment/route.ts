@@ -31,7 +31,7 @@ export async function POST(req: NextRequest, { params }: Params) {
     return errorResponse("ใบแจ้งหนี้นี้ไม่อยู่ในสถานะรอชำระเงิน", 409);
   }
 
-  const body = await req.json();
+  const body = await req.json().catch(() => ({}));
   const parsed = createPaymentSchema.safeParse({ ...body, receiptId });
   if (!parsed.success) {
     return errorResponse(parsed.error.errors[0].message, 422);

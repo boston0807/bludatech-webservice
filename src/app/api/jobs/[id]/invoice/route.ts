@@ -80,6 +80,9 @@ export async function POST(req: NextRequest, { params }: Params) {
 export async function GET(req: NextRequest, { params }: Params) {
   const auth = await getAuth(req);
   if (!auth) return unauthorizedResponse();
+  if (auth.role !== "CUSTOMER" && auth.role !== "ADMIN" && auth.role !== "ACCOUNTANT") {
+    return forbiddenResponse("คุณไม่มีสิทธิ์ดูข้อมูลใบแจ้งหนี้");
+  }
 
   const { id: jobId } = await params;
   const receipt = await prisma.receipt.findUnique({

@@ -4,6 +4,8 @@ import { prisma } from "@/lib/prisma";
 import { verifyToken, AUTH_COOKIE_NAME } from "@/lib/auth";
 import { successResponse, errorResponse, unauthorizedResponse, forbiddenResponse } from "@/lib/api-response";
 import { createJobSchema } from "@/lib/validations/job";
+import { JobStatus } from "@prisma/client";
+import { technicianJobWhere } from "@/lib/work-schedule";
 
 // GET /api/jobs — ดึง jobs ตาม role
 export async function GET(req: NextRequest) {
@@ -13,7 +15,11 @@ export async function GET(req: NextRequest) {
   if (!payload) return unauthorizedResponse();
 
   const { searchParams } = new URL(req.url);
-  const status = searchParams.get("status") ?? undefined;
+  const statusParam = searchParams.get("status");
+  if (statusParam && !(Object.values(JobStatus) as string[]).includes(statusParam)) {
+    return errorResponse("status ไม่ถูกต้อง", 422);
+  }
+  const status = (statusParam as JobStatus | null) ?? undefined;
 
   let jobs;
 
@@ -22,7 +28,7 @@ export async function GET(req: NextRequest) {
     jobs = await prisma.job.findMany({
       where: {
         customerId: payload.sub,
-        ...(status ? { status: status as never } : {}),
+        ...(status ? { status } : {}),
       },
       include: {
         installation: true,
@@ -34,7 +40,7 @@ export async function GET(req: NextRequest) {
     });
   } else if (payload.role === "ADMIN") {
     jobs = await prisma.job.findMany({
-      where: status ? { status: status as never } : {},
+      where: status ? { status } : {},
       include: {
         customer: { select: { customerName: true, customerPhone: true } },
         quotation: { select: { totalAmount: true } },
@@ -44,8 +50,12 @@ export async function GET(req: NextRequest) {
       orderBy: { createdAt: "desc" },
     });
   } else if (payload.role === "HEAD_TECHNICIAN" || payload.role === "TECHNICIAN") {
+    // หัวหน้าช่างเห็นทุกงาน / ช่างทั่วไปเห็นเฉพาะงานรอสำรวจและงานของตัวเอง
     jobs = await prisma.job.findMany({
-      where: status ? { status: status as never } : {},
+      where: {
+        ...(status ? { status } : {}),
+        ...(payload.role === "TECHNICIAN" ? technicianJobWhere(payload.sub) : {}),
+      },
       include: {
         customer: { select: { customerName: true, customerPhone: true } },
         installation: true,
@@ -64,7 +74,7 @@ export async function GET(req: NextRequest) {
     });
   } else if (payload.role === "ACCOUNTANT") {
     jobs = await prisma.job.findMany({
-      where: status ? { status: status as never } : {},
+      where: status ? { status } : {},
       include: {
         customer: { select: { customerName: true, customerPhone: true } },
         quotation: { select: { totalAmount: true } },
@@ -86,7 +96,7 @@ export async function POST(req: NextRequest) {
   const payload = await verifyToken(token);
   if (!payload || payload.role !== "CUSTOMER") return forbiddenResponse();
 
-  const body = await req.json();
+  const body = await req.json().catch(() => null);
   const parsed = createJobSchema.safeParse(body);
   if (!parsed.success) {
     return errorResponse("ข้อมูลไม่ถูกต้อง", 422, parsed.error.flatten().fieldErrors);
