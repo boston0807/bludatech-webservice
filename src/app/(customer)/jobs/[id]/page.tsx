@@ -33,7 +33,6 @@ import {
 } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { AttachmentGallery } from "@/components/attachments";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -924,23 +923,6 @@ export default function CustomerJobDetailPage({
             </CardContent>
           </Card>
         )}
-
-      {/* รูปถ่ายหน้างานจากช่าง — ดูประกอบการตรวจรับงาน และเป็นหลักฐานหากมีข้อโต้แย้ง */}
-      {["PASS_SURVEY", "QUOTED", "REQUEST_EDIT", "APPROVE", "PLAN_APPROVED", "IN_PROGRESS", "WAITING_ACCEPTANCE", "ACCEPTED", "PAID", "COMPLETED"].includes(job.status) && (
-        <Card>
-          <CardHeader className="pb-3">
-            <CardTitle className="text-base">รูปถ่ายหน้างาน</CardTitle>
-            <CardDescription>รูปที่ช่างบันทึกไว้ระหว่างสำรวจ ก่อน และหลังทำงาน (คลิกที่รูปเพื่อดูขนาดเต็ม)</CardDescription>
-          </CardHeader>
-          <CardContent>
-            <AttachmentGallery
-              jobId={job.id}
-              categories={["SURVEY", "WORK_BEFORE", "WORK_AFTER", "SAFETY_CHECK"]}
-              emptyText="ช่างยังไม่ได้แนบรูปถ่าย"
-            />
-          </CardContent>
-        </Card>
-      )}
 
       {/* UC14 ตรวจรับงาน — ผ่าน / ไม่ผ่าน */}
       {job.status === "WAITING_ACCEPTANCE" && (

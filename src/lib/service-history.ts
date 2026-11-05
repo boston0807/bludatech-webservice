@@ -1,6 +1,6 @@
 import { Prisma } from "@prisma/client";
+import { ApiError } from "@/lib/api-response";
 import { addMonths } from "@/lib/dates";
-import { transitionJob } from "@/lib/job-status";
 
 type HistoryDetails = { summary?: string | null; technicianNames?: string | null };
 
@@ -9,8 +9,6 @@ export const SERVICE_CONTRACT_YEARS = 2;
 export const SERVICE_INTERVAL_MONTHS = 1;
 // แจ้งเตือนล่วงหน้ากี่วัน และธุรการสร้างใบงานรอบถัดไปได้เมื่อเหลือไม่เกินกี่วัน
 export const SERVICE_REMINDER_DAYS = 14;
-// Cron สร้างใบงานรอบบำรุงอัตโนมัติเมื่อเหลือไม่เกินกี่วัน (ดู src/lib/service-rounds.ts)
-export const SERVICE_AUTO_CREATE_DAYS = 7;
 
 export async function saveJobHistory(
   tx: Prisma.TransactionClient,
@@ -29,12 +27,13 @@ export async function saveJobHistory(
   if (!job) throw new Error("ไม่พบใบงาน");
 
   // เปลี่ยนสถานะแบบมีเงื่อนไขก่อน กันการบันทึกประวัติซ้ำเมื่อมีคำขอพร้อมกัน
-  await transitionJob(tx, {
-    jobId,
-    to: "COMPLETED",
-    role: "ADMIN", // UC17 ธุรการเท่านั้น (route ตรวจ role แล้ว)
-    conflictMessage: "ใบงานนี้ไม่อยู่ในสถานะที่บันทึกประวัติได้",
+  const completed = await tx.job.updateMany({
+    where: { id: jobId, status: { in: ["ACCEPTED", "PAID"] } },
+    data: { status: "COMPLETED" },
   });
+  if (completed.count === 0) {
+    throw new ApiError("ใบงานนี้ไม่อยู่ในสถานะที่บันทึกประวัติได้", 409);
+  }
 
   const completedDate = new Date();
   // ถ้าธุรการไม่กรอกชื่อช่าง ใช้รายชื่อช่างที่ได้รับมอบหมายในแผนงาน

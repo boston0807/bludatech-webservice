@@ -6,7 +6,7 @@ import { useRouter, useSearchParams } from "next/navigation";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import Link from "next/link";
-import { Loader2, Building2, Eye, EyeOff } from "lucide-react";
+import { Loader2, Building2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -41,7 +41,6 @@ export function LoginForm() {
   const searchParams = useSearchParams();
   const redirectTo = safeRedirect(searchParams.get("redirect"));
   const [serverError, setServerError] = useState<string | null>(null);
-  const [showPassword, setShowPassword] = useState(false);
   // ลูกค้าที่ธุรการไม่อนุมัติ → แสดงเหตุผลและทางไปแก้ไขข้อมูล
   const [rejected, setRejected] = useState<{ username: string; note: string | null } | null>(null);
 
@@ -137,25 +136,13 @@ export function LoginForm() {
 
             <div className="space-y-2">
               <Label htmlFor="password">รหัสผ่าน</Label>
-              <div className="relative">
-                <Input
-                  id="password"
-                  type={showPassword ? "text" : "password"}
-                  placeholder="กรอกรหัสผ่าน"
-                  autoComplete="current-password"
-                  className="pr-10"
-                  {...register("password")}
-                />
-                <button
-                  type="button"
-                  onClick={() => setShowPassword((v) => !v)}
-                  className="absolute inset-y-0 right-0 flex items-center px-3 text-muted-foreground hover:text-foreground focus-visible:outline-none focus-visible:text-foreground"
-                  aria-label={showPassword ? "ซ่อนรหัสผ่าน" : "แสดงรหัสผ่าน"}
-                  aria-pressed={showPassword}
-                >
-                  {showPassword ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
-                </button>
-              </div>
+              <Input
+                id="password"
+                type="password"
+                placeholder="กรอกรหัสผ่าน"
+                autoComplete="current-password"
+                {...register("password")}
+              />
               {errors.password && (
                 <p className="text-destructive text-xs">{errors.password.message}</p>
               )}

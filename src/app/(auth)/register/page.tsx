@@ -12,7 +12,6 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from "@/components/ui/card";
 import { registerSchema, type RegisterInput } from "@/lib/validations/auth";
-import { LocationPicker } from "@/components/location-picker";
 
 export default function RegisterPage() {
   const router = useRouter();
@@ -22,14 +21,10 @@ export default function RegisterPage() {
   const {
     register,
     handleSubmit,
-    setValue,
-    watch,
     formState: { errors, isSubmitting },
   } = useForm<RegisterInput>({
     resolver: zodResolver(registerSchema),
-    defaultValues: { customerAddress: "" },
   });
-  const customerAddress = watch("customerAddress");
 
   const onSubmit = async (data: RegisterInput) => {
     setServerError(null);
@@ -156,15 +151,11 @@ export default function RegisterPage() {
                   <Input id="taxId" placeholder="กรอกเลขประจำตัวผู้เสียภาษี (ถ้ามี)" {...register("taxId")} />
                 </div>
 
-                <LocationPicker
-                  label="ที่อยู่"
-                  required
-                  value={customerAddress ?? ""}
-                  onChange={(address) =>
-                    setValue("customerAddress", address, { shouldValidate: !!errors.customerAddress })
-                  }
-                  error={errors.customerAddress?.message}
-                />
+                <div className="space-y-2">
+                  <Label htmlFor="customerAddress">ที่อยู่ <span className="text-destructive">*</span></Label>
+                  <Input id="customerAddress" placeholder="กรอกที่อยู่" {...register("customerAddress")} />
+                  {errors.customerAddress && <p className="text-destructive text-xs">{errors.customerAddress.message}</p>}
+                </div>
               </div>
             </div>
           </CardContent>

@@ -14,8 +14,6 @@ import {
   forbiddenResponse,
   notFoundResponse,
 } from "@/lib/api-response";
-import { transitionJob } from "@/lib/job-status";
-import { Notify } from "@/lib/notifications";
 
 type Params = { params: Promise<{ id: string }> };
 
@@ -37,10 +35,7 @@ export async function PATCH(req: NextRequest, { params }: Params) {
   }
 
   const { id } = await params;
-  const workPlan = await prisma.workPlan.findUnique({
-    where: { id },
-    include: { job: { include: { customer: { select: { customerName: true } } } }, technicians: true },
-  });
+  const workPlan = await prisma.workPlan.findUnique({ where: { id }, include: { job: true } });
   if (!workPlan) return notFoundResponse("ไม่พบแผนงาน");
   if (workPlan.job.customerId !== auth.sub) {
     return forbiddenResponse("คุณไม่มีสิทธิ์อนุมัติแผนงานนี้");
@@ -66,21 +61,10 @@ export async function PATCH(req: NextRequest, { params }: Params) {
       if (changed.count === 0) throw new ApiError("แผนงานนี้ไม่อยู่ในสถานะที่อนุมัติได้", 422);
 
       if (action === "APPROVE") {
-        await transitionJob(tx, { jobId: workPlan.jobId, to: "PLAN_APPROVED", role: auth.role });
+        await tx.job.update({ where: { id: workPlan.jobId }, data: { status: "PLAN_APPROVED" } });
       }
       return tx.workPlan.findUnique({ where: { id } });
     });
-
-    const customerName = workPlan.job.customer.customerName;
-    if (action === "APPROVE") {
-      await Notify.workPlanApproved({
-        jobId: workPlan.jobId,
-        customerName,
-        technicianIds: workPlan.technicians.map((t) => t.employeeId),
-      });
-    } else {
-      await Notify.workPlanRejected({ jobId: workPlan.jobId, customerName, note: rejectNote!.trim() });
-    }
 
     return successResponse(
       updated,

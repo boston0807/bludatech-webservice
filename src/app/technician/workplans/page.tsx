@@ -21,9 +21,6 @@ import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/com
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { LocationPicker } from "@/components/location-picker";
-import { AttachmentGallery, AttachmentUploader } from "@/components/attachments";
-import type { AttachmentCategory, AttachmentInfo } from "@/lib/upload-client";
 import { SAFETY_CHECKLIST } from "@/lib/safety-checklist";
 import {
   JOB_TYPE_LABEL,
@@ -76,14 +73,6 @@ const JOB_TYPE_ICON = { INSTALLATION: Building2, REPAIR: Wrench, SERVICE: Settin
 
 type SafetyAnswer = { passed: boolean | null; remark: string };
 
-// หมวดรูปที่ช่างเพิ่มได้ในแต่ละขั้น (ตรงกับกฎฝั่ง server ใน src/lib/attachments.ts)
-function workPhotoCategories(status: string): AttachmentCategory[] {
-  if (status === "PLAN_APPROVED") return ["WORK_BEFORE"];
-  if (status === "IN_PROGRESS") return ["WORK_BEFORE", "WORK_AFTER"];
-  if (status === "WAITING_ACCEPTANCE") return ["WORK_AFTER"];
-  return [];
-}
-
 export default function TechnicianWorkplansPage() {
   const [jobs, setJobs] = useState<Job[]>([]);
   const [materials, setMaterials] = useState<Material[]>([]);
@@ -109,7 +98,6 @@ export default function TechnicianWorkplansPage() {
   const [safetyJob, setSafetyJob] = useState<Job | null>(null);
   const [answers, setAnswers] = useState<Record<string, SafetyAnswer>>({});
   const [safetyNote, setSafetyNote] = useState("");
-  const [safetyPhotos, setSafetyPhotos] = useState<AttachmentInfo[]>([]);
 
   const loadData = useCallback(() => {
     setLoading(true);
@@ -177,7 +165,6 @@ export default function TechnicianWorkplansPage() {
     for (const item of SAFETY_CHECKLIST) init[item.key] = { passed: null, remark: "" };
     setAnswers(init);
     setSafetyNote("");
-    setSafetyPhotos([]);
   };
 
   const toggleTech = (id: string) =>
@@ -263,7 +250,6 @@ export default function TechnicianWorkplansPage() {
             remark: answers[i.key].remark || undefined,
           })),
           note: safetyNote || undefined,
-          attachmentIds: safetyPhotos.map((p) => p.id),
         }),
       },
       (d) => {
@@ -317,7 +303,7 @@ export default function TechnicianWorkplansPage() {
               </div>
             )}
 
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
               <div className="space-y-2">
                 <Label htmlFor="startDate">วันที่เริ่มต้น</Label>
                 <Input type="date" id="startDate" value={startDate} onChange={(e) => setStartDate(e.target.value)} />
@@ -326,9 +312,11 @@ export default function TechnicianWorkplansPage() {
                 <Label htmlFor="endDate">วันที่สิ้นสุด</Label>
                 <Input type="date" id="endDate" min={startDate} value={endDate} onChange={(e) => setEndDate(e.target.value)} />
               </div>
+              <div className="space-y-2">
+                <Label htmlFor="location">สถานที่ปฏิบัติงาน</Label>
+                <Input id="location" value={location} onChange={(e) => setLocation(e.target.value)} />
+              </div>
             </div>
-
-            <LocationPicker key={planJob.id} label="สถานที่ปฏิบัติงาน" value={location} onChange={setLocation} />
 
             {/* มอบหมายช่าง */}
             <div className="space-y-2">
@@ -502,16 +490,6 @@ export default function TechnicianWorkplansPage() {
               })}
             </div>
             <div className="space-y-2">
-              <Label>รูปถ่ายประกอบผลทดสอบ</Label>
-              <AttachmentUploader
-                jobId={safetyJob.id}
-                category="SAFETY_CHECK"
-                value={safetyPhotos}
-                onChange={setSafetyPhotos}
-                disabled={actionLoading}
-              />
-            </div>
-            <div className="space-y-2">
               <Label htmlFor="safetyNote">หมายเหตุเพิ่มเติม</Label>
               <textarea
                 id="safetyNote"
@@ -636,18 +614,6 @@ export default function TechnicianWorkplansPage() {
                           {planShortages.map((m) => m.material.materialName).join(", ")} — แจ้งฝ่ายบัญชีแล้วอัตโนมัติ
                         </p>
                       )}
-                    </div>
-                  )}
-
-                  {["PLAN_APPROVED", "IN_PROGRESS", "WAITING_ACCEPTANCE"].includes(job.status) && (
-                    <div className="rounded-md border p-3 space-y-2">
-                      <p className="text-sm font-medium">รูปถ่ายหน้างาน (หลักฐานก่อน/หลังทำงาน)</p>
-                      <AttachmentGallery
-                        jobId={job.id}
-                        categories={["WORK_BEFORE", "WORK_AFTER", "SAFETY_CHECK"]}
-                        uploadable={assigned ? workPhotoCategories(job.status) : []}
-                        refreshKey={job.safetyChecks?.[0]?.id}
-                      />
                     </div>
                   )}
 

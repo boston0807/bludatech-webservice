@@ -3,8 +3,6 @@ import { NextRequest } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { verifyToken, AUTH_COOKIE_NAME } from "@/lib/auth";
 import { successResponse, errorResponse, unauthorizedResponse, forbiddenResponse } from "@/lib/api-response";
-import { Notify } from "@/lib/notifications";
-import { JOB_TYPE_LABEL } from "@/lib/labels";
 import { createJobSchema } from "@/lib/validations/job";
 
 // GET /api/jobs — ดึง jobs ตาม role
@@ -134,13 +132,6 @@ export async function POST(req: NextRequest) {
         }),
       },
       include: { installation: true, repair: true, service: true },
-    });
-
-    await Notify.jobCreated({
-      jobId: job.id,
-      jobTypeLabel: JOB_TYPE_LABEL[jobType] ?? jobType,
-      customerName: payload.name,
-      jobAddress,
     });
 
     return successResponse(job, 201);

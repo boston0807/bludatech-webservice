@@ -4,8 +4,6 @@ import { prisma } from "@/lib/prisma";
 import { getAuth } from "@/lib/api-auth";
 import { ApiError, successResponse, errorResponse, unauthorizedResponse, forbiddenResponse, notFoundResponse } from "@/lib/api-response";
 import { canWorkOnPlan } from "@/lib/work-schedule";
-import { canTransition, transitionJob } from "@/lib/job-status";
-import { changeStock, InsufficientStockError } from "@/lib/materials";
 
 type Params = { params: Promise<{ id: string }> };
 
@@ -20,7 +18,7 @@ export async function PATCH(req: NextRequest, { params }: Params) {
   const { id } = await params;
   const job = await prisma.job.findUnique({ where: { id } });
   if (!job) return notFoundResponse("ไม่พบใบงาน");
-  if (!canTransition(job.status, "IN_PROGRESS", auth.role)) {
+  if (job.status !== "PLAN_APPROVED") {
     return errorResponse("ใบงานต้องอยู่ในสถานะ PLAN_APPROVED (แผนงานอนุมัติแล้ว) จึงจะเริ่มงานได้", 422);
   }
 
@@ -36,28 +34,26 @@ export async function PATCH(req: NextRequest, { params }: Params) {
 
   try {
     await prisma.$transaction(async (tx) => {
-      await transitionJob(tx, {
-        jobId: id,
-        to: "IN_PROGRESS",
-        role: auth.role,
-        conflictMessage: "ใบงานนี้เริ่มปฏิบัติงานไปแล้ว",
+      const started = await tx.job.updateMany({
+        where: { id, status: "PLAN_APPROVED" },
+        data: { status: "IN_PROGRESS" },
       });
+      if (started.count === 0) {
+        throw new ApiError("ใบงานนี้เริ่มปฏิบัติงานไปแล้ว", 409);
+      }
 
-      for (const wpMat of workPlan?.materials ?? []) {
-        try {
-          await changeStock(tx, {
-            materialId: wpMat.materialId,
-            change: -wpMat.quantity,
-            reason: "JOB_USAGE",
-            jobId: id,
-            employeeId: auth.sub,
+      if (workPlan && workPlan.materials.length > 0) {
+        for (const wpMat of workPlan.materials) {
+          const deducted = await tx.material.updateMany({
+            where: { id: wpMat.materialId, stockQuantity: { gte: wpMat.quantity } },
+            data: { stockQuantity: { decrement: wpMat.quantity } },
           });
-        } catch (e) {
-          if (!(e instanceof InsufficientStockError)) throw e;
-          throw new ApiError(
-            `อะไหล่ "${wpMat.material.materialName}" ในคลังไม่เพียงพอ (ต้องใช้ ${e.requested} คงเหลือ ${e.available}) — แจ้งฝ่ายบัญชีสั่งซื้อเพิ่มได้ที่หน้า "สั่งซื้ออุปกรณ์"`,
-            422
-          );
+          if (deducted.count === 0) {
+            throw new ApiError(
+              `อะไหล่ "${wpMat.material.materialName}" ในคลังไม่เพียงพอ (ต้องใช้ ${wpMat.quantity} คงเหลือ ${wpMat.material.stockQuantity}) — แจ้งฝ่ายบัญชีสั่งซื้อเพิ่มได้ที่หน้า "สั่งซื้ออุปกรณ์"`,
+              422
+            );
+          }
         }
       }
 

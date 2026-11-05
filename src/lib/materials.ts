@@ -1,8 +1,7 @@
 // src/lib/materials.ts
 // คำนวณยอดวัสดุ: ใช้ไปแล้ว / จองไว้ในแผนงาน / ขาดเท่าไร (UC10, UC11, รายงานที่ 3)
 
-import type { JobStatus, Prisma, PrismaClient, StockMovementReason } from "@prisma/client";
-import { NOT_ELEVATOR } from "@/lib/elevator-catalog";
+import type { JobStatus, Prisma, PrismaClient } from "@prisma/client";
 
 type Db = PrismaClient | Prisma.TransactionClient;
 
@@ -36,7 +35,6 @@ export type MaterialUsage = {
 
 export async function getMaterialUsage(db: Db): Promise<MaterialUsage[]> {
   const materials = await db.material.findMany({
-    where: NOT_ELEVATOR, // แถวข้อมูลลิฟต์ไม่ใช่สินค้าในคลัง
     orderBy: { materialName: "asc" },
     include: {
       workPlanMaterials: {
@@ -95,54 +93,3 @@ export async function getMaterialUsage(db: Db): Promise<MaterialUsage[]> {
 }
 
 export const LOW_STOCK_THRESHOLD = 5;
-
-// ─── ประวัติสต็อก ───────────────────────────────────────────
-// ทุกการเปลี่ยน stockQuantity ต้องผ่านฟังก์ชันนี้ เพื่อให้ยอดคงเหลือกับประวัติตรงกันเสมอ
-// ต้องเรียกภายใน transaction เดียวกับงานที่เป็นเหตุ (เช่น เริ่มงาน) เพื่อ rollback พร้อมกันได้
-
-export type StockChangeInput = {
-  materialId: string;
-  change: number; // + รับเข้า, - เบิกใช้ (ห้ามเป็น 0)
-  reason: StockMovementReason;
-  jobId?: string | null;
-  employeeId?: string | null;
-  note?: string | null;
-};
-
-export class InsufficientStockError extends Error {
-  constructor(public materialId: string, public available: number, public requested: number) {
-    super(`สต็อกไม่พอ (คงเหลือ ${available} ต้องใช้ ${requested})`);
-  }
-}
-
-export async function changeStock(tx: Prisma.TransactionClient, input: StockChangeInput) {
-  const { materialId, change, reason } = input;
-  if (!Number.isInteger(change) || change === 0) {
-    throw new Error(`changeStock: change ต้องเป็นจำนวนเต็มที่ไม่ใช่ 0 (ได้ ${change})`);
-  }
-
-  // ตัดสต็อกแบบมีเงื่อนไข กันยอดติดลบเมื่อมีคำขอพร้อมกัน
-  const updated = await tx.material.updateMany({
-    where: { id: materialId, ...(change < 0 ? { stockQuantity: { gte: -change } } : {}) },
-    data: { stockQuantity: { increment: change } },
-  });
-  if (updated.count === 0) {
-    const current = await tx.material.findUnique({ where: { id: materialId }, select: { stockQuantity: true } });
-    if (!current) throw new Error(`changeStock: ไม่พบวัสดุ ${materialId}`);
-    throw new InsufficientStockError(materialId, current.stockQuantity, -change);
-  }
-
-  const material = await tx.material.findUniqueOrThrow({ where: { id: materialId } });
-  const movement = await tx.stockMovement.create({
-    data: {
-      materialId,
-      change,
-      balanceAfter: material.stockQuantity,
-      reason,
-      jobId: input.jobId ?? null,
-      employeeId: input.employeeId ?? null,
-      note: input.note?.trim() || null,
-    },
-  });
-  return { material, movement };
-}

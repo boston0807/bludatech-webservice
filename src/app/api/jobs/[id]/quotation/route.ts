@@ -11,9 +11,6 @@ import {
 } from "@/lib/api-response";
 import { z } from "zod";
 import { sendQuotationCreatedEmail } from "@/lib/email";
-import { canTransition, transitionJob } from "@/lib/job-status";
-import { Notify } from "@/lib/notifications";
-import { ApiError } from "@/lib/api-response";
 
 type Params = { params: Promise<{ id: string }> };
 
@@ -47,7 +44,7 @@ export async function POST(req: NextRequest, { params }: Params) {
       return errorResponse("ใบงานนี้มีใบเสนอราคาแล้ว", 409);
     }
 
-    if (!canTransition(job.status, "QUOTED", payload.role)) {
+    if (job.status !== "PASS_SURVEY" && job.status !== "REQUEST_EDIT") {
       return errorResponse("ใบงานนี้ไม่อยู่ในสถานะที่จัดทำใบเสนอราคาได้", 422);
     }
 
@@ -62,22 +59,17 @@ export async function POST(req: NextRequest, { params }: Params) {
     const totalAmount = Math.round((materialTotal + jobWage) * 100) / 100;
 
     // สร้าง quotation และอัปเดต job status และ jobWage ใน transaction
-    const quotation = await prisma.$transaction(async (tx) => {
-      await transitionJob(tx, {
-        jobId,
-        to: "QUOTED",
-        role: payload.role,
-        data: { jobWage },
-        conflictMessage: "ใบงานนี้ไม่อยู่ในสถานะที่จัดทำใบเสนอราคาได้ (อาจมีผู้อื่นออกใบเสนอราคาไปแล้ว)",
-      });
-      return tx.quotation.upsert({
+    const [quotation] = await prisma.$transaction([
+      prisma.quotation.upsert({
         where: { jobId },
         create: { jobId, totalAmount, status: "PENDING" },
         update: { totalAmount, status: "PENDING", rejectNote: null },
-      });
-    });
-
-    await Notify.quotationCreated({ jobId, customerId: job.customerId, totalAmount });
+      }),
+      prisma.job.update({
+        where: { id: jobId },
+        data: { status: "QUOTED", jobWage },
+      }),
+    ]);
 
     // ส่งอีเมลแจ้งลูกค้าว่ามีใบเสนอราคาพร้อมให้อนุมัติ (fire-and-forget)
     if (job.customer.customerEmail) {
@@ -91,7 +83,6 @@ export async function POST(req: NextRequest, { params }: Params) {
 
     return successResponse({ ...quotation, materialTotal, jobWage }, 201);
   } catch (error) {
-    if (error instanceof ApiError) return errorResponse(error.message, error.status);
     console.error("[CREATE_QUOTATION_ERROR]", error);
     return errorResponse("เกิดข้อผิดพลาดในการสร้างใบเสนอราคา", 500);
   }

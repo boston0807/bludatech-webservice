@@ -1,7 +1,7 @@
 // src/app/(customer)/jobs/new/page.tsx
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useState } from "react";
 import { useRouter } from "next/navigation";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
@@ -12,15 +12,6 @@ import { Label } from "@/components/ui/label";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { createJobSchema, type CreateJobInput } from "@/lib/validations/job";
 import { cn } from "@/lib/utils";
-import { LocationPicker } from "@/components/location-picker";
-
-type ElevatorType = { id: string; name: string };
-type ElevatorModel = { id: string; brand: string; name: string; typeId: string; type: ElevatorType };
-
-const OTHER = "__other__"; // ลิฟต์ที่ไม่มีในระบบ → ให้พิมพ์เอง
-
-const selectClass =
-  "flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2";
 
 const JOB_TYPES = [
   { value: "INSTALLATION", label: "ติดตั้งลิฟต์", desc: "ติดตั้งลิฟต์ใหม่สำหรับอาคาร", icon: Building2 },
@@ -32,25 +23,6 @@ export default function NewJobPage() {
   const router = useRouter();
   const [selectedType, setSelectedType] = useState<"INSTALLATION" | "REPAIR" | "SERVICE" | null>(null);
   const [serverError, setServerError] = useState<string | null>(null);
-  // ข้อมูลลิฟต์ที่ธุรการบันทึกไว้ (หน้า ข้อมูลลิฟต์)
-  const [elevatorTypes, setElevatorTypes] = useState<ElevatorType[]>([]);
-  const [elevatorModels, setElevatorModels] = useState<ElevatorModel[]>([]);
-  const [typeChoice, setTypeChoice] = useState("");
-  const [modelChoice, setModelChoice] = useState("");
-
-  useEffect(() => {
-    Promise.all([
-      fetch("/api/elevators/types").then((r) => r.json()),
-      fetch("/api/elevators/models").then((r) => r.json()),
-    ])
-      .then(([t, m]) => {
-        if (t.success) setElevatorTypes(t.data);
-        if (m.success) setElevatorModels(m.data);
-      })
-      .catch(() => {
-        // โหลดไม่ได้ → ใช้ช่องพิมพ์เองแทน
-      });
-  }, []);
 
   const {
     register,
@@ -60,56 +32,12 @@ export default function NewJobPage() {
     formState: { errors, isSubmitting },
   } = useForm<CreateJobInput>({
     resolver: zodResolver(createJobSchema),
-    defaultValues: { quantity: 1, jobAddress: "" },
+    defaultValues: { quantity: 1 },
   });
-  const jobAddress = watch("jobAddress");
-
-  const setField = (name: "elevatorBrand" | "elevatorModel" | "elevatorType", value: string | undefined) =>
-    setValue(name as keyof CreateJobInput, value as never);
-
-  // งานติดตั้งกรองรุ่นตามประเภทที่เลือก
-  const modelOptions = useMemo(
-    () =>
-      selectedType === "INSTALLATION" && typeChoice
-        ? elevatorModels.filter((m) => m.typeId === typeChoice)
-        : elevatorModels,
-    [elevatorModels, selectedType, typeChoice]
-  );
-  const hasCatalog = elevatorModels.length > 0 || elevatorTypes.length > 0;
-
-  // เลือกรุ่นจากระบบ → เติมยี่ห้อ/รุ่น/ประเภทให้อัตโนมัติ
-  const chooseModel = (id: string) => {
-    setModelChoice(id);
-    const m = elevatorModels.find((x) => x.id === id);
-    if (selectedType === "INSTALLATION") {
-      setField("elevatorBrand", m?.brand);
-      setField("elevatorModel", m?.name);
-      if (m) {
-        setTypeChoice(m.typeId);
-        setField("elevatorType", m.type.name);
-      }
-    } else {
-      setField("elevatorModel", m ? `${m.brand} ${m.name}` : undefined);
-    }
-  };
-
-  const chooseType = (id: string) => {
-    setTypeChoice(id);
-    setField("elevatorType", elevatorTypes.find((t) => t.id === id)?.name);
-    // รุ่นที่เลือกไว้ไม่ตรงประเภทใหม่ → ล้าง
-    const current = elevatorModels.find((m) => m.id === modelChoice);
-    if (current && id && current.typeId !== id) chooseModel("");
-  };
 
   const handleSelectType = (type: "INSTALLATION" | "REPAIR" | "SERVICE") => {
     setSelectedType(type);
     setValue("jobType", type);
-    // ประเภทงานเปลี่ยน → รูปแบบเก็บรุ่นลิฟต์ต่างกัน จึงเริ่มเลือกใหม่
-    setTypeChoice("");
-    setModelChoice("");
-    setField("elevatorBrand", undefined);
-    setField("elevatorModel", undefined);
-    setField("elevatorType", undefined);
   };
 
   const onSubmit = async (data: CreateJobInput) => {
@@ -181,14 +109,12 @@ export default function NewJobPage() {
                 </div>
               )}
 
-              {/* สถานที่ — เลือกจากแผนที่ */}
-              <LocationPicker
-                label="สถานที่ปฏิบัติงาน"
-                required
-                value={jobAddress ?? ""}
-                onChange={(address) => setValue("jobAddress", address, { shouldValidate: !!errors.jobAddress })}
-                error={errors.jobAddress?.message}
-              />
+              {/* ที่อยู่ */}
+              <div className="space-y-2">
+                <Label htmlFor="jobAddress">ที่อยู่สถานที่ปฏิบัติงาน <span className="text-destructive">*</span></Label>
+                <Input id="jobAddress" placeholder="กรอกที่อยู่อาคาร/สถานที่" {...register("jobAddress")} />
+                {errors.jobAddress && <p className="text-destructive text-xs">{errors.jobAddress.message}</p>}
+              </div>
 
               {/* จำนวนเครื่อง */}
               <div className="grid grid-cols-2 gap-4">
@@ -203,48 +129,12 @@ export default function NewJobPage() {
                   {errors.quantity && <p className="text-destructive text-xs">{errors.quantity.message}</p>}
                 </div>
 
-                {/* รุ่นลิฟต์ — เลือกจากข้อมูลในระบบ หรือพิมพ์เองถ้าไม่มี */}
+                {/* รุ่นลิฟต์ */}
                 <div className="space-y-2">
-                  <Label htmlFor="elevatorModelChoice">รุ่นลิฟต์</Label>
-                  {hasCatalog ? (
-                    <select
-                      id="elevatorModelChoice"
-                      className={selectClass}
-                      value={modelChoice}
-                      onChange={(e) => chooseModel(e.target.value)}
-                    >
-                      <option value="">— ไม่ระบุ / ไม่ทราบ —</option>
-                      {modelOptions.map((m) => (
-                        <option key={m.id} value={m.id}>
-                          {m.brand} {m.name} ({m.type.name})
-                        </option>
-                      ))}
-                      <option value={OTHER}>อื่นๆ (ระบุเอง)</option>
-                    </select>
-                  ) : (
-                    <Input id="elevatorModelChoice" placeholder="เช่น OTIS 3000" {...register("elevatorModel" as keyof CreateJobInput)} />
-                  )}
+                  <Label htmlFor="elevatorModel">รุ่นลิฟต์</Label>
+                  <Input id="elevatorModel" placeholder="เช่น OTIS 3000" {...register("elevatorModel" as keyof CreateJobInput)} />
                 </div>
               </div>
-
-              {hasCatalog && modelChoice === OTHER && (
-                <div className={cn("grid gap-4", selectedType === "INSTALLATION" ? "grid-cols-2" : "grid-cols-1")}>
-                  {selectedType === "INSTALLATION" && (
-                    <div className="space-y-2">
-                      <Label htmlFor="elevatorBrand">ยี่ห้อลิฟต์</Label>
-                      <Input id="elevatorBrand" placeholder="เช่น OTIS, KONE" {...register("elevatorBrand" as keyof CreateJobInput)} />
-                    </div>
-                  )}
-                  <div className="space-y-2">
-                    <Label htmlFor="elevatorModel">ระบุรุ่นลิฟต์</Label>
-                    <Input
-                      id="elevatorModel"
-                      placeholder={selectedType === "INSTALLATION" ? "เช่น Gen2" : "เช่น OTIS 3000"}
-                      {...register("elevatorModel" as keyof CreateJobInput)}
-                    />
-                  </div>
-                </div>
-              )}
 
               {/* เฉพาะ INSTALLATION */}
               {selectedType === "INSTALLATION" && (
@@ -262,35 +152,14 @@ export default function NewJobPage() {
                       <p className="text-destructive text-xs">{(errors as Record<string, { message?: string }>).buildingFloor?.message}</p>
                     )}
                   </div>
-                  {hasCatalog ? (
-                    <div className="space-y-2">
-                      <Label htmlFor="elevatorTypeChoice">ประเภทลิฟต์</Label>
-                      <select
-                        id="elevatorTypeChoice"
-                        className={selectClass}
-                        value={typeChoice}
-                        onChange={(e) => chooseType(e.target.value)}
-                      >
-                        <option value="">— ไม่ระบุ —</option>
-                        {elevatorTypes.map((t) => (
-                          <option key={t.id} value={t.id}>
-                            {t.name}
-                          </option>
-                        ))}
-                      </select>
-                    </div>
-                  ) : (
-                    <>
-                      <div className="space-y-2">
-                        <Label htmlFor="elevatorBrand">ยี่ห้อลิฟต์</Label>
-                        <Input id="elevatorBrand" placeholder="เช่น OTIS, KONE" {...register("elevatorBrand" as keyof CreateJobInput)} />
-                      </div>
-                      <div className="space-y-2 col-span-2">
-                        <Label htmlFor="elevatorType">ประเภทลิฟต์</Label>
-                        <Input id="elevatorType" placeholder="เช่น Passenger, Freight" {...register("elevatorType" as keyof CreateJobInput)} />
-                      </div>
-                    </>
-                  )}
+                  <div className="space-y-2">
+                    <Label htmlFor="elevatorBrand">ยี่ห้อลิฟต์</Label>
+                    <Input id="elevatorBrand" placeholder="เช่น OTIS, KONE" {...register("elevatorBrand" as keyof CreateJobInput)} />
+                  </div>
+                  <div className="space-y-2 col-span-2">
+                    <Label htmlFor="elevatorType">ประเภทลิฟต์</Label>
+                    <Input id="elevatorType" placeholder="เช่น Passenger, Freight" {...register("elevatorType" as keyof CreateJobInput)} />
+                  </div>
                 </div>
               )}
 
