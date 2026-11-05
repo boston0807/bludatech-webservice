@@ -12,6 +12,15 @@ import {
   CardHeader,
   CardTitle,
 } from "@/components/ui/card";
+import {
+  EMPTY_FILTERS,
+  FilterBar,
+  Pagination,
+  filtersToQuery,
+  useDebounced,
+  usePagination,
+  type ListFilters,
+} from "@/components/ui/list-controls";
 
 type Customer = {
   id: string;
@@ -33,6 +42,10 @@ export default function PendingCustomersPage() {
   const [rejectingId, setRejectingId] = useState<string | null>(null);
   const [rejectNote, setRejectNote] = useState("");
   const [toast, setToast] = useState<{ message: string; type: "success" | "error" } | null>(null);
+  const [filters, setFilters] = useState<ListFilters>(EMPTY_FILTERS);
+  const query = filtersToQuery(useDebounced(filters), { status: "PENDING" });
+  const hasFilter = filters.q !== "" || filters.from !== "" || filters.to !== "";
+  const { pageItems, ...pager } = usePagination(customers, 10);
 
   const showToast = (message: string, type: "success" | "error") => {
     setToast({ message, type });
@@ -42,7 +55,7 @@ export default function PendingCustomersPage() {
   const fetchCustomers = useCallback(async () => {
     setLoading(true);
     try {
-      const res = await fetch("/api/admin/customers?status=PENDING");
+      const res = await fetch(`/api/admin/customers${query}`);
       const data = await res.json();
       if (res.ok && data.success) {
         setCustomers(data.data);
@@ -55,7 +68,7 @@ export default function PendingCustomersPage() {
     } finally {
       setLoading(false);
     }
-  }, []);
+  }, [query]);
 
   useEffect(() => {
     fetchCustomers();
@@ -116,6 +129,13 @@ export default function PendingCustomersPage() {
         </Badge>
       </div>
 
+      <FilterBar
+        value={filters}
+        onChange={setFilters}
+        searchPlaceholder="ค้นหาชื่อ, username, เบอร์โทร, อีเมล หรือเลขผู้เสียภาษี"
+        dateLabel="วันที่สมัคร"
+      />
+
       {/* Loading State */}
       {loading && (
         <div className="flex justify-center py-20">
@@ -128,8 +148,8 @@ export default function PendingCustomersPage() {
         <Card>
           <CardContent className="flex flex-col items-center justify-center py-20 text-center">
             <CheckCircle2 className="h-12 w-12 text-green-500 mb-3" />
-            <p className="text-lg font-medium">ไม่มีคำขอรออนุมัติ</p>
-            <p className="text-muted-foreground text-sm">ลูกค้าทุกรายได้รับการดำเนินการแล้ว</p>
+            <p className="text-lg font-medium">{hasFilter ? "ไม่พบลูกค้าที่ตรงกับเงื่อนไข" : "ไม่มีคำขอรออนุมัติ"}</p>
+            {!hasFilter && <p className="text-muted-foreground text-sm">ลูกค้าทุกรายได้รับการดำเนินการแล้ว</p>}
           </CardContent>
         </Card>
       )}
@@ -137,7 +157,7 @@ export default function PendingCustomersPage() {
       {/* Customer Cards */}
       {!loading && customers.length > 0 && (
         <div className="grid gap-4">
-          {customers.map((customer) => (
+          {pageItems.map((customer) => (
             <Card key={customer.id} className="hover:shadow-md transition-shadow">
               <CardHeader className="pb-3">
                 <div className="flex items-start justify-between">
@@ -245,6 +265,7 @@ export default function PendingCustomersPage() {
               </CardContent>
             </Card>
           ))}
+          <Pagination {...pager} onPage={pager.setPage} />
         </div>
       )}
     </div>

@@ -14,6 +14,7 @@ import {
   forbiddenResponse,
   notFoundResponse,
 } from "@/lib/api-response";
+import { sendWorkPlanDecisionEmail } from "@/lib/email-notifications";
 
 type Params = { params: Promise<{ id: string }> };
 
@@ -35,7 +36,7 @@ export async function PATCH(req: NextRequest, { params }: Params) {
   }
 
   const { id } = await params;
-  const workPlan = await prisma.workPlan.findUnique({ where: { id }, include: { job: true } });
+  const workPlan = await prisma.workPlan.findUnique({ where: { id }, include: { job: { include: { customer: true } } } });
   if (!workPlan) return notFoundResponse("ไม่พบแผนงาน");
   if (workPlan.job.customerId !== auth.sub) {
     return forbiddenResponse("คุณไม่มีสิทธิ์อนุมัติแผนงานนี้");
@@ -65,6 +66,19 @@ export async function PATCH(req: NextRequest, { params }: Params) {
       }
       return tx.workPlan.findUnique({ where: { id } });
     });
+
+    if (updated) {
+      sendWorkPlanDecisionEmail({
+        customerEmail: workPlan.job.customer.customerEmail,
+        customerName: workPlan.job.customer.customerName,
+        jobId: workPlan.jobId,
+        jobAddress: updated.location ?? workPlan.job.jobAddress,
+        action,
+        startDate: updated.startDate,
+        endDate: updated.endDate,
+        rejectNote: updated.rejectNote,
+      });
+    }
 
     return successResponse(
       updated,

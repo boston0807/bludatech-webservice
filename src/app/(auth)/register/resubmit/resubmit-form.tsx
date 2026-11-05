@@ -10,6 +10,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from "@/components/ui/card";
+import { LocationPicker } from "@/components/location-picker";
 
 type Profile = {
   customerName: string;
@@ -160,7 +161,13 @@ export function ResubmitForm() {
                 <div className="bg-destructive/10 border border-destructive/30 text-destructive text-sm rounded-md px-4 py-3">{error}</div>
               )}
               {field("customerName", "ชื่อ-นามสกุล / ชื่อหน่วยงาน")}
-              {field("customerAddress", "ที่อยู่")}
+              <LocationPicker
+                label="ที่อยู่"
+                required
+                value={profile.customerAddress}
+                onChange={(address) => setProfile((p) => (p ? { ...p, customerAddress: address } : p))}
+                error={fieldErrors.customerAddress?.[0]}
+              />
               {field("customerPhone", "เบอร์โทรศัพท์", "0812345678")}
               {field("customerEmail", "อีเมล (ถ้ามี)")}
               {field("taxId", "เลขประจำตัวผู้เสียภาษี (ถ้ามี)")}

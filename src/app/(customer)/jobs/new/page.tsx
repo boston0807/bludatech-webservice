@@ -3,7 +3,7 @@
 
 import { useState } from "react";
 import { useRouter } from "next/navigation";
-import { useForm } from "react-hook-form";
+import { Controller, useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { Loader2, Building2, Wrench, Settings } from "lucide-react";
 import { Button } from "@/components/ui/button";
@@ -12,6 +12,7 @@ import { Label } from "@/components/ui/label";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { createJobSchema, type CreateJobInput } from "@/lib/validations/job";
 import { cn } from "@/lib/utils";
+import { LocationPicker } from "@/components/location-picker";
 
 const JOB_TYPES = [
   { value: "INSTALLATION", label: "ติดตั้งลิฟต์", desc: "ติดตั้งลิฟต์ใหม่สำหรับอาคาร", icon: Building2 },
@@ -26,13 +27,14 @@ export default function NewJobPage() {
 
   const {
     register,
+    control,
     handleSubmit,
     setValue,
     watch,
     formState: { errors, isSubmitting },
   } = useForm<CreateJobInput>({
     resolver: zodResolver(createJobSchema),
-    defaultValues: { quantity: 1 },
+    defaultValues: { quantity: 1, jobAddress: "" },
   });
 
   const handleSelectType = (type: "INSTALLATION" | "REPAIR" | "SERVICE") => {
@@ -111,9 +113,19 @@ export default function NewJobPage() {
 
               {/* ที่อยู่ */}
               <div className="space-y-2">
-                <Label htmlFor="jobAddress">ที่อยู่สถานที่ปฏิบัติงาน <span className="text-destructive">*</span></Label>
-                <Input id="jobAddress" placeholder="กรอกที่อยู่อาคาร/สถานที่" {...register("jobAddress")} />
-                {errors.jobAddress && <p className="text-destructive text-xs">{errors.jobAddress.message}</p>}
+                <Controller
+                  name="jobAddress"
+                  control={control}
+                  render={({ field }) => (
+                    <LocationPicker
+                      label="ที่อยู่สถานที่ปฏิบัติงาน"
+                      required
+                      value={field.value ?? ""}
+                      onChange={field.onChange}
+                      error={errors.jobAddress?.message}
+                    />
+                  )}
+                />
               </div>
 
               {/* จำนวนเครื่อง */}

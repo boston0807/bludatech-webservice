@@ -4,7 +4,8 @@ import { prisma } from "@/lib/prisma";
 import { verifyToken, AUTH_COOKIE_NAME } from "@/lib/auth";
 import { successResponse, errorResponse, unauthorizedResponse, forbiddenResponse } from "@/lib/api-response";
 import { createJobSchema } from "@/lib/validations/job";
-import { JobStatus } from "@prisma/client";
+import { JobStatus, Prisma } from "@prisma/client";
+import { jobTypeParam, optionalDateFilter, searchTerm } from "@/lib/list-filters";
 import { technicianJobWhere } from "@/lib/work-schedule";
 
 // GET /api/jobs — ดึง jobs ตาม role
@@ -21,15 +22,37 @@ export async function GET(req: NextRequest) {
   }
   const status = (statusParam as JobStatus | null) ?? undefined;
 
+  // ตัวกรองเพิ่มเติม: ?q=คำค้น &jobType= &from=YYYY-MM-DD &to=YYYY-MM-DD (กรองตามวันที่ยื่นคำขอ)
+  const q = searchTerm(searchParams);
+  const jobType = jobTypeParam(searchParams);
+  const requestDate = optionalDateFilter(searchParams);
+  const filters: Prisma.JobWhereInput[] = [];
+  if (status) filters.push({ status });
+  if (jobType) filters.push({ jobType });
+  if (requestDate) filters.push({ requestDate });
+  if (q) {
+    filters.push({
+      OR: [
+        { id: { contains: q, mode: "insensitive" } },
+        { jobAddress: { contains: q, mode: "insensitive" } },
+        { jobNote: { contains: q, mode: "insensitive" } },
+        ...(payload.role !== "CUSTOMER"
+          ? [
+              { customer: { customerName: { contains: q, mode: "insensitive" as const } } },
+              { customer: { customerPhone: { contains: q } } },
+            ]
+          : []),
+      ],
+    });
+  }
+  const baseWhere: Prisma.JobWhereInput = filters.length ? { AND: filters } : {};
+
   let jobs;
 
   if (payload.role === "CUSTOMER") {
     // ลูกค้าเห็นเฉพาะ jobs ของตัวเอง
     jobs = await prisma.job.findMany({
-      where: {
-        customerId: payload.sub,
-        ...(status ? { status } : {}),
-      },
+      where: { ...baseWhere, customerId: payload.sub },
       include: {
         installation: true,
         repair: true,
@@ -40,7 +63,7 @@ export async function GET(req: NextRequest) {
     });
   } else if (payload.role === "ADMIN") {
     jobs = await prisma.job.findMany({
-      where: status ? { status } : {},
+      where: baseWhere,
       include: {
         customer: { select: { customerName: true, customerPhone: true } },
         quotation: { select: { totalAmount: true } },
@@ -52,10 +75,8 @@ export async function GET(req: NextRequest) {
   } else if (payload.role === "HEAD_TECHNICIAN" || payload.role === "TECHNICIAN") {
     // หัวหน้าช่างเห็นทุกงาน / ช่างทั่วไปเห็นเฉพาะงานรอสำรวจและงานของตัวเอง
     jobs = await prisma.job.findMany({
-      where: {
-        ...(status ? { status } : {}),
-        ...(payload.role === "TECHNICIAN" ? technicianJobWhere(payload.sub) : {}),
-      },
+      where:
+        payload.role === "TECHNICIAN" ? { AND: [baseWhere, technicianJobWhere(payload.sub)] } : baseWhere,
       include: {
         customer: { select: { customerName: true, customerPhone: true } },
         installation: true,
@@ -74,7 +95,7 @@ export async function GET(req: NextRequest) {
     });
   } else if (payload.role === "ACCOUNTANT") {
     jobs = await prisma.job.findMany({
-      where: status ? { status } : {},
+      where: baseWhere,
       include: {
         customer: { select: { customerName: true, customerPhone: true } },
         quotation: { select: { totalAmount: true } },

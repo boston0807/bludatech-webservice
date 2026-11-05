@@ -6,12 +6,14 @@ import { ArrowLeft, CheckCircle2, CreditCard, FileText, Loader2 } from "lucide-r
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
+import { PrintableDocument, PrintButton } from "@/components/documents/printable-document";
+import { isHttpUrl } from "@/lib/validations/payment";
 
 type Receipt = {
   id: string;
   jobId: string;
   totalAmount: string | number;
-  status: "UNPAID" | "PAID" | "CANCELLED";
+  status: "DRAFT" | "UNPAID" | "PAID" | "CANCELLED";
   createdAt: string;
   employee?: { employeeName: string };
   payments: Array<{
@@ -25,12 +27,16 @@ type Receipt = {
     id: string;
     jobType: string;
     jobAddress: string;
+    jobWage: string | number;
     customer: {
       customerName: string;
       customerPhone: string;
       customerEmail?: string | null;
+      customerAddress?: string | null;
+      taxId?: string | null;
     };
     quotation?: { totalAmount: string | number } | null;
+    expenses?: { expenseName: string; quantity: number; price: string | number }[];
   };
 };
 
@@ -40,7 +46,8 @@ const JOB_TYPE_LABEL: Record<string, string> = {
   SERVICE: "บำรุงรักษา",
 };
 
-const STATUS_INFO: Record<string, { label: string; variant: "success" | "warning" | "destructive" | "default" }> = {
+const STATUS_INFO: Record<string, { label: string; variant: "success" | "warning" | "destructive" | "default" | "secondary" }> = {
+  DRAFT: { label: "ใบร่าง รอตรวจสอบ", variant: "secondary" },
   UNPAID: { label: "รอชำระเงิน", variant: "warning" },
   PAID: { label: "ชำระเงินแล้ว", variant: "success" },
   CANCELLED: { label: "ยกเลิก", variant: "destructive" },
@@ -84,13 +91,31 @@ export default function AccountantInvoiceDetailPage({ params }: { params: Promis
 
   const statusInfo = STATUS_INFO[receipt.status] ?? STATUS_INFO.UNPAID;
 
+  const paid = receipt.status === "PAID";
+
   return (
-    <div className="mx-auto max-w-3xl space-y-6">
-      <div>
+    <>
+    <PrintableDocument
+      kind={paid ? "RECEIPT" : "INVOICE"}
+      docNo={`${paid ? "RC" : "INV"}-${receipt.id.slice(0, 10).toUpperCase()}`}
+      issuedAt={paid && receipt.payments[0] ? receipt.payments[0].paymentDate : receipt.createdAt}
+      jobId={receipt.jobId}
+      jobType={receipt.job.jobType}
+      jobAddress={receipt.job.jobAddress}
+      customer={receipt.job.customer}
+      expenses={receipt.job.expenses ?? []}
+      jobWage={receipt.job.jobWage}
+      totalAmount={receipt.totalAmount}
+      payments={receipt.payments}
+      issuedBy={receipt.employee?.employeeName}
+    />
+    <div className="mx-auto max-w-3xl space-y-6 print:hidden">
+      <div className="flex items-center justify-between gap-3">
         <Link href="/accountant/invoices" className="inline-flex items-center gap-2 text-sm text-muted-foreground hover:text-foreground">
           <ArrowLeft className="h-4 w-4" />
           กลับไปหน้ารายการใบแจ้งหนี้
         </Link>
+        <PrintButton label={paid ? "พิมพ์ใบเสร็จ" : "พิมพ์ใบแจ้งหนี้"} />
       </div>
 
       <Card>
@@ -159,8 +184,8 @@ export default function AccountantInvoiceDetailPage({ params }: { params: Promis
                       </div>
                       <div className="text-right">
                         <p className="font-semibold">{Number(payment.amount).toLocaleString("th-TH", { minimumFractionDigits: 2 })} บาท</p>
-                        {payment.slipUrl && (
-                          <a href={payment.slipUrl} target="_blank" rel="noreferrer" className="text-primary underline text-xs">
+                        {payment.slipUrl && isHttpUrl(payment.slipUrl) && (
+                          <a href={payment.slipUrl} target="_blank" rel="noopener noreferrer" className="text-primary underline text-xs">
                             ดูสลิป
                           </a>
                         )}
@@ -181,5 +206,6 @@ export default function AccountantInvoiceDetailPage({ params }: { params: Promis
         </CardContent>
       </Card>
     </div>
+    </>
   );
 }

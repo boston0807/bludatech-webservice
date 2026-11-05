@@ -10,20 +10,9 @@ import { prisma } from "@/lib/prisma";
 import { getAuth } from "@/lib/api-auth";
 import { successResponse, errorResponse, unauthorizedResponse, forbiddenResponse } from "@/lib/api-response";
 import { getMaterialUsage } from "@/lib/materials";
+import { parseDateRange as parseRange } from "@/lib/list-filters";
 
 const JOB_TYPES: JobType[] = ["INSTALLATION", "REPAIR", "SERVICE"];
-
-function parseRange(searchParams: URLSearchParams): { from: Date; to: Date } | null {
-  const fromStr = searchParams.get("from");
-  const toStr = searchParams.get("to");
-  const re = /^\d{4}-\d{2}-\d{2}$/;
-  if (!fromStr || !toStr || !re.test(fromStr) || !re.test(toStr)) return null;
-  // ขอบเขตวันตามเวลาไทย: 00:00 ของวันแรก ถึง 23:59:59.999 ของวันสุดท้าย
-  const from = new Date(`${fromStr}T00:00:00.000+07:00`);
-  const to = new Date(`${toStr}T23:59:59.999+07:00`);
-  if (Number.isNaN(from.getTime()) || Number.isNaN(to.getTime()) || from > to) return null;
-  return { from, to };
-}
 
 const round2 = (n: number) => Math.round(n * 100) / 100;
 
@@ -130,5 +119,158 @@ export async function GET(req: NextRequest) {
     });
   }
 
-  return errorResponse("type ต้องเป็น jobs-summary, service-history หรือ materials", 422);
+  if (type === "kpi") {
+    return successResponse(await buildKpi(range));
+  }
+
+  return errorResponse("type ต้องเป็น jobs-summary, service-history, materials หรือ kpi", 422);
+}
+
+// ─── KPI (รายงานเสริม) ───────────────────────────────────────────────────────
+// คำนวณจากวันที่ที่มีอยู่แล้วในแต่ละตาราง ไม่ต้องเพิ่ม field
+//   หมายเหตุ: ไม่มีตารางเก็บประวัติสถานะ จึงใช้ updatedAt ของใบเสนอราคา/แผนงานที่อนุมัติแล้ว
+//   เป็นเวลาที่อนุมัติโดยประมาณ (หลังอนุมัติแล้วเอกสารทั้งสองจะไม่ถูกแก้ไขอีก)
+
+const DAY_MS = 24 * 60 * 60 * 1000;
+
+function avgDays(pairs: Array<[Date | null | undefined, Date | null | undefined]>) {
+  const diffs = pairs
+    .filter((p): p is [Date, Date] => !!p[0] && !!p[1] && p[1].getTime() >= p[0].getTime())
+    .map(([a, b]) => (b.getTime() - a.getTime()) / DAY_MS);
+  return {
+    avgDays: diffs.length ? round2(diffs.reduce((s, d) => s + d, 0) / diffs.length) : null,
+    sample: diffs.length,
+  };
+}
+
+async function buildKpi(range: { from: Date; to: Date }) {
+  const jobs = await prisma.job.findMany({
+    where: { requestDate: { gte: range.from, lte: range.to } },
+    select: {
+      id: true,
+      jobType: true,
+      status: true,
+      requestDate: true,
+      surveys: { select: { surveyDate: true }, orderBy: { surveyDate: "asc" }, take: 1 },
+      quotation: { select: { status: true, createdAt: true, updatedAt: true } },
+      workPlan: { select: { status: true, createdAt: true, updatedAt: true, startDate: true } },
+      safetyChecks: { select: { passed: true, checkedAt: true }, orderBy: { checkedAt: "asc" } },
+      receipt: {
+        select: {
+          createdAt: true,
+          status: true,
+          payments: { select: { paymentDate: true }, orderBy: { paymentDate: "asc" }, take: 1 },
+        },
+      },
+    },
+  });
+
+  const PLAN_APPROVED = ["APPROVED", "IN_PROGRESS", "FINISHED"];
+
+  const stages = [
+    {
+      key: "request_to_survey",
+      label: "ยื่นคำขอ → สำรวจหน้างาน",
+      ...avgDays(jobs.map((j) => [j.requestDate, j.surveys[0]?.surveyDate])),
+    },
+    {
+      key: "survey_to_quotation",
+      label: "สำรวจ → ออกใบเสนอราคา",
+      ...avgDays(jobs.map((j) => [j.surveys[0]?.surveyDate, j.quotation?.createdAt])),
+    },
+    {
+      key: "quotation_to_approval",
+      label: "ออกใบเสนอราคา → ลูกค้าอนุมัติ",
+      ...avgDays(
+        jobs.map((j) => [j.quotation?.createdAt, j.quotation?.status === "APPROVED" ? j.quotation.updatedAt : null])
+      ),
+    },
+    {
+      key: "plan_to_approval",
+      label: "จัดทำแผนงาน → ลูกค้าอนุมัติแผน",
+      ...avgDays(
+        jobs.map((j) => [
+          j.workPlan?.createdAt,
+          j.workPlan && PLAN_APPROVED.includes(j.workPlan.status) ? j.workPlan.updatedAt : null,
+        ])
+      ),
+    },
+    {
+      key: "start_to_safety_pass",
+      label: "เริ่มงาน → ผ่านทดสอบความปลอดภัย",
+      ...avgDays(jobs.map((j) => [j.workPlan?.startDate, j.safetyChecks.find((c) => c.passed)?.checkedAt])),
+    },
+    {
+      key: "invoice_to_payment",
+      label: "ออกใบแจ้งหนี้ → ชำระเงิน",
+      ...avgDays(jobs.map((j) => [j.receipt?.createdAt, j.receipt?.payments[0]?.paymentDate])),
+    },
+    {
+      key: "request_to_payment",
+      label: "รวมทั้งกระบวนการ (ยื่นคำขอ → ชำระเงิน)",
+      ...avgDays(jobs.map((j) => [j.requestDate, j.receipt?.payments[0]?.paymentDate])),
+    },
+  ];
+
+  // อัตราผ่านทดสอบความปลอดภัยในครั้งแรก
+  const tested = jobs.filter((j) => j.safetyChecks.length > 0);
+  const firstPass = tested.filter((j) => j.safetyChecks[0].passed).length;
+  const safety = {
+    testedJobs: tested.length,
+    firstPassJobs: firstPass,
+    firstPassRate: tested.length ? round2((firstPass / tested.length) * 100) : null,
+    totalChecks: tested.reduce((s, j) => s + j.safetyChecks.length, 0),
+  };
+
+  // ภาระงานช่าง: แผนงานที่เริ่มในช่วงที่เลือก (ไม่นับแผนที่ถูกตีกลับ)
+  const assignments = await prisma.workPlanTechnician.findMany({
+    where: {
+      workPlan: { status: { not: "REJECTED" }, startDate: { gte: range.from, lte: range.to } },
+    },
+    select: {
+      employee: { select: { id: true, employeeName: true, role: true } },
+      workPlan: { select: { startDate: true, endDate: true, job: { select: { status: true } } } },
+    },
+  });
+  const byTech = new Map<
+    string,
+    { employeeId: string; employeeName: string; role: string; plans: number; workDays: number; activePlans: number; completedPlans: number }
+  >();
+  for (const a of assignments) {
+    const row = byTech.get(a.employee.id) ?? {
+      employeeId: a.employee.id,
+      employeeName: a.employee.employeeName,
+      role: a.employee.role,
+      plans: 0,
+      workDays: 0,
+      activePlans: 0,
+      completedPlans: 0,
+    };
+    row.plans += 1;
+    row.workDays += Math.max(1, Math.round((a.workPlan.endDate.getTime() - a.workPlan.startDate.getTime()) / DAY_MS) + 1);
+    const st = a.workPlan.job.status;
+    if (["APPROVE", "PLAN_APPROVED", "IN_PROGRESS", "WAITING_ACCEPTANCE"].includes(st)) row.activePlans += 1;
+    if (["ACCEPTED", "PAID", "COMPLETED"].includes(st)) row.completedPlans += 1;
+    byTech.set(a.employee.id, row);
+  }
+  const technicians = [...byTech.values()].sort((a, b) => b.workDays - a.workDays);
+
+  // รายได้ที่รับชำระจริงในช่วงที่เลือก แยกตามประเภทงาน (ตามวันที่ชำระ)
+  const payments = await prisma.payment.findMany({
+    where: { paymentDate: { gte: range.from, lte: range.to } },
+    select: { amount: true, receipt: { select: { job: { select: { jobType: true } } } } },
+  });
+  const revenueByType = JOB_TYPES.map((jobType) => {
+    const rows = payments.filter((p) => p.receipt.job.jobType === jobType);
+    return { jobType, payments: rows.length, amount: round2(rows.reduce((s, p) => s + Number(p.amount), 0)) };
+  });
+
+  return {
+    jobCount: jobs.length,
+    stages,
+    safety,
+    technicians,
+    revenueByType,
+    revenueTotal: round2(revenueByType.reduce((s, r) => s + r.amount, 0)),
+  };
 }

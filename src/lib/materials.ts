@@ -92,4 +92,9 @@ export async function getMaterialUsage(db: Db): Promise<MaterialUsage[]> {
   });
 }
 
-export const LOW_STOCK_THRESHOLD = 5;
+// เกณฑ์ "ใกล้หมด" ตั้งได้ผ่าน env LOW_STOCK_THRESHOLD (ไม่ต้องเพิ่ม field ในตาราง Material)
+// อ่านตอนเรียกใช้ เพราะบน Cloudflare Workers env ถูกใส่ตอนรับ request
+export function getLowStockThreshold(): number {
+  const n = Number(process.env.LOW_STOCK_THRESHOLD ?? 5);
+  return Number.isInteger(n) && n >= 0 ? n : 5;
+}

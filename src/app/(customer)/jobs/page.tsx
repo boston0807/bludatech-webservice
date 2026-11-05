@@ -7,6 +7,15 @@ import { FilePlus, Loader2, Building2, Wrench, Settings, ChevronRight } from "lu
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import {
+  EMPTY_FILTERS,
+  FilterBar,
+  Pagination,
+  filtersToQuery,
+  useDebounced,
+  usePagination,
+  type ListFilters,
+} from "@/components/ui/list-controls";
 
 type Job = {
   id: string;
@@ -62,9 +71,15 @@ export default function JobsPage() {
   const [jobs, setJobs] = useState<Job[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [filters, setFilters] = useState<ListFilters>(EMPTY_FILTERS);
+  const query = filtersToQuery(useDebounced(filters));
+  const hasFilter = query !== "";
+  const { pageItems, ...pager } = usePagination(jobs, 10);
 
   useEffect(() => {
-    fetch("/api/jobs")
+    setLoading(true);
+    setError(null);
+    fetch(`/api/jobs${query}`)
       .then((r) => r.json())
       .then((data) => {
         if (data.success) setJobs(data.data);
@@ -72,7 +87,7 @@ export default function JobsPage() {
       })
       .catch(() => setError("โหลดข้อมูลไม่สำเร็จ"))
       .finally(() => setLoading(false));
-  }, []);
+  }, [query]);
 
   return (
     <div className="space-y-6">
@@ -89,6 +104,15 @@ export default function JobsPage() {
         </Link>
       </div>
 
+      <FilterBar
+        value={filters}
+        onChange={setFilters}
+        searchPlaceholder="ค้นหาที่อยู่ หมายเหตุ หรือเลขที่ใบงาน"
+        statusOptions={Object.entries(STATUS_LABEL).map(([value, label]) => ({ value, label }))}
+        jobTypeOptions={Object.entries(JOB_TYPE_LABEL).map(([value, label]) => ({ value, label }))}
+        dateLabel="วันที่ยื่น"
+      />
+
       {loading && (
         <div className="flex justify-center py-20">
           <Loader2 className="h-8 w-8 animate-spin text-muted-foreground" />
@@ -101,7 +125,13 @@ export default function JobsPage() {
         </div>
       )}
 
-      {!loading && !error && jobs.length === 0 && (
+      {!loading && !error && jobs.length === 0 && hasFilter && (
+        <Card>
+          <CardContent className="py-12 text-center text-muted-foreground">ไม่พบใบงานที่ตรงกับเงื่อนไข</CardContent>
+        </Card>
+      )}
+
+      {!loading && !error && jobs.length === 0 && !hasFilter && (
         <Card>
           <CardContent className="flex flex-col items-center justify-center py-20 text-center gap-3">
             <FilePlus className="h-12 w-12 text-muted-foreground" />
@@ -116,7 +146,7 @@ export default function JobsPage() {
 
       {!loading && jobs.length > 0 && (
         <div className="space-y-3">
-          {jobs.map((job) => {
+          {pageItems.map((job) => {
             const Icon = JOB_TYPE_ICON[job.jobType];
             return (
               <Link key={job.id} href={`/jobs/${job.id}`}>
@@ -152,6 +182,7 @@ export default function JobsPage() {
               </Link>
             );
           })}
+          <Pagination {...pager} onPage={pager.setPage} />
         </div>
       )}
     </div>

@@ -24,6 +24,7 @@ import {
   CardTitle,
 } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
+import { PrintableDocument, PrintButton } from "@/components/documents/printable-document";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -47,6 +48,7 @@ type Job = {
     customerPhone: string;
     customerEmail: string | null;
     customerAddress: string;
+    taxId?: string | null;
   };
   installation?: {
     buildingFloor: number;
@@ -57,7 +59,13 @@ type Job = {
   repair?: { elevatorModel: string | null; quantity: number };
   service?: { elevatorModel: string | null; quantity: number };
   expenses: Expense[];
-  quotation: { id: string; totalAmount: string; status: string; rejectNote: string | null } | null;
+  quotation: {
+    id: string;
+    totalAmount: string;
+    status: string;
+    rejectNote: string | null;
+    createdAt: string;
+  } | null;
 };
 
 // ─── Constants ────────────────────────────────────────────────────────────────
@@ -139,7 +147,20 @@ export default function CreateQuotationPage({
   // Already has a quotation
   if (job.quotation && !canRequote) {
     return (
-      <div className="max-w-2xl mx-auto space-y-6">
+      <>
+      <PrintableDocument
+        kind="QUOTATION"
+        docNo={`QT-${job.quotation.id.slice(0, 10).toUpperCase()}`}
+        issuedAt={job.quotation.createdAt}
+        jobId={job.id}
+        jobType={job.jobType}
+        jobAddress={job.jobAddress}
+        customer={job.customer}
+        expenses={job.expenses}
+        jobWage={job.jobWage}
+        totalAmount={job.quotation.totalAmount}
+      />
+      <div className="max-w-2xl mx-auto space-y-6 print:hidden">
         <div>
           <Link
             href="/accountant/quotations"
@@ -148,7 +169,10 @@ export default function CreateQuotationPage({
             <ChevronLeft className="h-4 w-4" />
             กลับไปรายการ
           </Link>
-          <h1 className="text-2xl font-bold tracking-tight">ใบเสนอราคา</h1>
+          <div className="flex items-center justify-between gap-3">
+            <h1 className="text-2xl font-bold tracking-tight">ใบเสนอราคา</h1>
+            <PrintButton label="พิมพ์ใบเสนอราคา" />
+          </div>
         </div>
         <Card>
           <CardContent className="pt-6 space-y-4">
@@ -188,6 +212,7 @@ export default function CreateQuotationPage({
           </CardContent>
         </Card>
       </div>
+      </>
     );
   }
 

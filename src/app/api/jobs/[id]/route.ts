@@ -19,12 +19,12 @@ export async function GET(req: NextRequest, { params }: Params) {
   const job = await prisma.job.findUnique({
     where: { id },
     include: {
-      customer: { select: { customerName: true, customerPhone: true, customerEmail: true, customerAddress: true } },
+      customer: { select: { customerName: true, customerPhone: true, customerEmail: true, customerAddress: true, taxId: true } },
       installation: true,
       repair: true,
       service: true,
       surveys: { include: { technician: { select: { employeeName: true } } } },
-      expenses: true,
+      expenses: { orderBy: { id: "asc" } },
       quotation: true,
       workPlan: {
         include: {

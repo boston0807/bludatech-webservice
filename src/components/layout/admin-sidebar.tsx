@@ -3,7 +3,7 @@
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { Building2, Users, LayoutDashboard, ClipboardCheck, CalendarClock, BarChart3 } from "lucide-react";
+import { Building2, Users, LayoutDashboard, ClipboardCheck, CalendarClock, BarChart3, CalendarDays, UserCog, KeyRound } from "lucide-react";
 import { cn } from "@/lib/utils";
 
 const NAV_ITEMS = [
@@ -11,14 +11,17 @@ const NAV_ITEMS = [
   { href: "/admin/customers/pending", label: "อนุมัติลูกค้า", icon: Users },
   { href: "/admin/service-history", label: "บันทึกประวัติบริการ", icon: ClipboardCheck },
   { href: "/admin/service-rounds", label: "รอบบำรุงรักษา", icon: CalendarClock },
+  { href: "/admin/schedule", label: "ตารางงานช่าง", icon: CalendarDays },
   { href: "/admin/reports", label: "รายงาน", icon: BarChart3 },
+  { href: "/admin/employees", label: "จัดการพนักงาน", icon: UserCog },
+  { href: "/admin/account", label: "เปลี่ยนรหัสผ่าน", icon: KeyRound },
 ];
 
 export function AdminSidebar() {
   const pathname = usePathname();
 
   return (
-    <aside className="w-60 border-r bg-white flex flex-col shrink-0">
+    <aside className="w-60 border-r bg-white flex flex-col shrink-0 print:hidden">
       {/* Logo */}
       <div className="h-14 flex items-center gap-2 px-5 border-b">
         <Building2 className="h-6 w-6 text-primary" />

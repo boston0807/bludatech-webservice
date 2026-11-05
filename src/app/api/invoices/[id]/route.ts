@@ -23,6 +23,7 @@ export async function GET(req: NextRequest, { params }: Params) {
         include: {
           customer: { omit: { password: true } },
           quotation: true,
+          expenses: { orderBy: { id: "asc" } },
         },
       },
     },

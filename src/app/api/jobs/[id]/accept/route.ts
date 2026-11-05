@@ -14,6 +14,7 @@ import {
   forbiddenResponse,
   notFoundResponse,
 } from "@/lib/api-response";
+import { sendReworkRequestedEmail } from "@/lib/email-notifications";
 
 type Params = { params: Promise<{ id: string }> };
 
@@ -32,7 +33,8 @@ export async function PATCH(req: NextRequest, { params }: Params) {
   if (!auth) return unauthorizedResponse();
 
   const { id } = await params;
-  const job = await prisma.job.findUnique({ where: { id }, include: { quotation: true, receipt: true } });
+  const job = await prisma.job.findUnique({ where: { id }, include: { quotation: true, receipt: true, customer: { select: { customerName: true } } },
+  });
   if (!job) return notFoundResponse("ไม่พบใบงาน");
 
   if (auth.role !== "CUSTOMER" || job.customerId !== auth.sub) {
@@ -55,6 +57,12 @@ export async function PATCH(req: NextRequest, { params }: Params) {
         });
         if (moved.count === 0) throw new ApiError("ใบงานยังไม่พร้อมให้ตรวจรับ", 422);
         return tx.job.findUnique({ where: { id } });
+      });
+      sendReworkRequestedEmail({
+        customerName: job.customer.customerName,
+        jobId: id,
+        jobAddress: job.jobAddress,
+        reworkNote: note!.trim(),
       });
       return successResponse(updated, "ส่งงานกลับให้ช่างแก้ไขแล้ว");
     }

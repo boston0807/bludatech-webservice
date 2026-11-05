@@ -5,7 +5,7 @@ import { NextRequest } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { getAuth, hasRole } from "@/lib/api-auth";
 import { successResponse, unauthorizedResponse, forbiddenResponse } from "@/lib/api-response";
-import { getMaterialUsage, LOW_STOCK_THRESHOLD } from "@/lib/materials";
+import { getMaterialUsage, getLowStockThreshold } from "@/lib/materials";
 
 export async function GET(req: NextRequest) {
   const auth = await getAuth(req);
@@ -13,6 +13,7 @@ export async function GET(req: NextRequest) {
   if (!hasRole(auth, "ADMIN", "ACCOUNTANT", "TECHNICIAN", "HEAD_TECHNICIAN")) return forbiddenResponse();
 
   const usage = await getMaterialUsage(prisma);
+  const threshold = getLowStockThreshold();
   const shortages = usage
     .filter((m) => m.shortageQty > 0)
     .map((m) => ({
@@ -23,13 +24,13 @@ export async function GET(req: NextRequest) {
     .sort((a, b) => (a.earliestStartDate?.getTime() ?? 0) - (b.earliestStartDate?.getTime() ?? 0));
 
   const lowStock = usage
-    .filter((m) => m.shortageQty === 0 && m.stockQuantity - m.reservedQty <= LOW_STOCK_THRESHOLD)
+    .filter((m) => m.shortageQty === 0 && m.stockQuantity - m.reservedQty <= threshold)
     .map(({ reservedBy: _reservedBy, ...m }) => ({ ...m, availableQty: m.stockQuantity - m.reservedQty }));
 
   return successResponse({
     shortages,
     lowStock,
     usage: usage.map(({ reservedBy: _reservedBy, ...m }) => ({ ...m, availableQty: m.stockQuantity - m.reservedQty })),
-    threshold: LOW_STOCK_THRESHOLD,
+    threshold,
   });
 }

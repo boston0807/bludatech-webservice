@@ -4,7 +4,8 @@
 
 import { useEffect, useState } from "react";
 import Link from "next/link";
-import { Loader2, CalendarDays, MapPin, Users, AlertTriangle } from "lucide-react";
+import { Loader2, CalendarDays, MapPin, Users, AlertTriangle, List } from "lucide-react";
+import { ScheduleCalendar } from "@/components/schedule/schedule-calendar";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
@@ -35,6 +36,7 @@ export default function TechnicianSchedulePage() {
   const [onlyMine, setOnlyMine] = useState(true);
   const [canSeeTeam, setCanSeeTeam] = useState(false);
   const [loading, setLoading] = useState(true);
+  const [view, setView] = useState<"list" | "calendar">("list");
 
   useEffect(() => {
     fetch("/api/auth/me")
@@ -45,11 +47,14 @@ export default function TechnicianSchedulePage() {
 
   useEffect(() => {
     setLoading(true);
-    fetch(`/api/technicians/schedule${onlyMine ? "?mine=1" : ""}`)
+    const sp = new URLSearchParams();
+    if (onlyMine) sp.set("mine", "1");
+    if (view === "calendar") sp.set("past", "1"); // ปฏิทินแสดงงานย้อนหลังด้วย
+    fetch(`/api/technicians/schedule?${sp}`)
       .then((r) => r.json())
       .then((d) => d.success && setItems(d.data.items))
       .finally(() => setLoading(false));
-  }, [onlyMine]);
+  }, [onlyMine, view]);
 
   // จัดกลุ่มตามวันเริ่มงาน
   const groups = items.reduce<Record<string, Item[]>>((acc, it) => {
@@ -65,6 +70,13 @@ export default function TechnicianSchedulePage() {
           <h1 className="text-2xl font-bold tracking-tight">ตารางงาน</h1>
           <p className="text-muted-foreground">งานที่ได้รับมอบหมายตามแผนงาน เรียงตามวันที่เข้าปฏิบัติงาน</p>
         </div>
+        <div className="flex flex-wrap gap-2">
+          <Button size="sm" variant={view === "list" ? "default" : "outline"} onClick={() => setView("list")}>
+            <List className="h-4 w-4" /> รายการ
+          </Button>
+          <Button size="sm" variant={view === "calendar" ? "default" : "outline"} onClick={() => setView("calendar")}>
+            <CalendarDays className="h-4 w-4" /> ปฏิทิน
+          </Button>
         {canSeeTeam && (
           <div className="flex gap-2">
             <Button size="sm" variant={onlyMine ? "default" : "outline"} onClick={() => setOnlyMine(true)}>
@@ -75,12 +87,15 @@ export default function TechnicianSchedulePage() {
             </Button>
           </div>
         )}
+        </div>
       </div>
 
       {loading ? (
         <div className="flex justify-center py-20">
           <Loader2 className="h-8 w-8 animate-spin text-muted-foreground" />
         </div>
+      ) : view === "calendar" ? (
+        <ScheduleCalendar items={items} />
       ) : items.length === 0 ? (
         <Card>
           <CardContent className="py-16 text-center text-muted-foreground">ยังไม่มีงานที่ได้รับมอบหมาย</CardContent>

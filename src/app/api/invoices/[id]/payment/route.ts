@@ -4,6 +4,8 @@ import { prisma } from "@/lib/prisma";
 import { verifyToken, AUTH_COOKIE_NAME } from "@/lib/auth";
 import { ApiError, successResponse, errorResponse, unauthorizedResponse, forbiddenResponse, notFoundResponse } from "@/lib/api-response";
 import { createPaymentSchema } from "@/lib/validations/payment";
+import { Prisma } from "@prisma/client";
+import { sendPaymentReceiptEmail } from "@/lib/email-notifications";
 
 type Params = { params: Promise<{ id: string }> };
 
@@ -17,7 +19,7 @@ export async function POST(req: NextRequest, { params }: Params) {
   const { id: receiptId } = await params;
   const receipt = await prisma.receipt.findUnique({
     where: { id: receiptId },
-    include: { job: true },
+    include: { job: true, payments: { select: { amount: true } } },
   });
 
   if (!receipt) return notFoundResponse("ไม่พบใบแจ้งหนี้");
@@ -39,8 +41,18 @@ export async function POST(req: NextRequest, { params }: Params) {
 
   const { amount, paymentMethod, slipUrl } = parsed.data;
 
-  if (!receipt.totalAmount.equals(amount)) {
-    return errorResponse("จำนวนเงินต้องเท่ากับยอดในใบแจ้งหนี้", 422);
+  // ยอดที่ชำระรวมทุกครั้งต้องไม่เกินยอดใบแจ้งหนี้ และครั้งนี้ต้องชำระส่วนที่เหลือครบพอดี
+  const paidSoFar = receipt.payments.reduce((sum, p) => sum.plus(p.amount), new Prisma.Decimal(0));
+  const outstanding = receipt.totalAmount.minus(paidSoFar);
+  if (outstanding.lessThanOrEqualTo(0)) {
+    return errorResponse("ใบแจ้งหนี้นี้ชำระครบแล้ว", 409);
+  }
+  const amountDec = new Prisma.Decimal(amount).toDecimalPlaces(2);
+  if (amountDec.greaterThan(outstanding)) {
+    return errorResponse(`จำนวนเงินเกินยอดค้างชำระ (${outstanding.toFixed(2)} บาท)`, 422);
+  }
+  if (!amountDec.equals(outstanding)) {
+    return errorResponse(`จำนวนเงินต้องเท่ากับยอดค้างชำระ ${outstanding.toFixed(2)} บาท`, 422);
   }
 
   try {
@@ -58,7 +70,7 @@ export async function POST(req: NextRequest, { params }: Params) {
       const payment = await tx.payment.create({
         data: {
           receiptId,
-          amount,
+          amount: amountDec,
           paymentMethod,
           slipUrl: slipUrl || null,
           verified: true, // หรือ false ถ้ารอตรวจสอบ
@@ -76,6 +88,23 @@ export async function POST(req: NextRequest, { params }: Params) {
 
       return payment;
     });
+
+    // แจ้งลูกค้าพร้อมรายละเอียดใบเสร็จ (ไม่รอผล ไม่ให้อีเมลล้มเหลวกระทบการชำระเงิน)
+    const customer = await prisma.customer.findUnique({
+      where: { id: receipt.job.customerId },
+      select: { customerName: true, customerEmail: true },
+    });
+    if (customer?.customerEmail) {
+      sendPaymentReceiptEmail({
+        to: customer.customerEmail,
+        customerName: customer.customerName,
+        jobId: receipt.jobId,
+        receiptId: receipt.id,
+        amount: result.amount.toString(),
+        paymentMethod: result.paymentMethod,
+        paymentDate: result.paymentDate,
+      });
+    }
 
     return successResponse(result, "ชำระเงินสำเร็จ");
   } catch (error: any) {

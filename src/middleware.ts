@@ -20,6 +20,7 @@ const PROTECTED_ROUTES: Array<{ prefix: string; roles: string[] }> = [
   { prefix: "/jobs", roles: ["CUSTOMER"] },
   { prefix: "/invoices", roles: ["CUSTOMER"] },
   { prefix: "/history", roles: ["CUSTOMER"] },
+  { prefix: "/profile", roles: ["CUSTOMER"] },
   { prefix: "/admin", roles: ["ADMIN"] },
   { prefix: "/accountant", roles: ["ACCOUNTANT"] },
   { prefix: "/technician", roles: ["TECHNICIAN", "HEAD_TECHNICIAN"] },
