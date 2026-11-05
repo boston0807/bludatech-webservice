@@ -28,7 +28,7 @@ export async function POST(req: NextRequest, { params }: Params) {
     return errorResponse("ใบงานยังไม่เสร็จสิ้นกระบวนการชำระเงิน", 422);
   }
   // ใบแจ้งหนี้ที่ค้างชำระจะปิดงานผ่านการชำระเงินเท่านั้น
-  if (job.receipt?.status === "UNPAID") {
+  if (job.receipt?.status === "UNPAID" || job.receipt?.status === "DRAFT") {
     return errorResponse("ใบงานนี้มีใบแจ้งหนี้ที่ยังไม่ได้ชำระ", 422);
   }
 

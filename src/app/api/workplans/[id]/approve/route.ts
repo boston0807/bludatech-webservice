@@ -1,57 +1,78 @@
 // src/app/api/workplans/[id]/approve/route.ts
+// UC09 อนุมัติแผนการทำงาน
+//   APPROVE → แผน APPROVED, งาน PLAN_APPROVED
+//   REJECT  → แผน REJECTED พร้อมเหตุผล งานยังเป็น APPROVE ให้หัวหน้าช่างแก้แผนแล้วส่งใหม่ (BP ข้อ 11 → 9)
 import { NextRequest } from "next/server";
+import { z } from "zod";
 import { prisma } from "@/lib/prisma";
-import { verifyToken, AUTH_COOKIE_NAME } from "@/lib/auth";
-import { successResponse, errorResponse, unauthorizedResponse, forbiddenResponse, notFoundResponse } from "@/lib/api-response";
+import { getAuth } from "@/lib/api-auth";
+import {
+  ApiError,
+  successResponse,
+  errorResponse,
+  unauthorizedResponse,
+  forbiddenResponse,
+  notFoundResponse,
+} from "@/lib/api-response";
 
 type Params = { params: Promise<{ id: string }> };
 
-// PATCH /api/workplans/:id/approve - UC09 อนุมัติแผนการทำงาน
-export async function PATCH(req: NextRequest, { params }: Params) {
-  const token = req.cookies.get(AUTH_COOKIE_NAME)?.value;
-  if (!token) return unauthorizedResponse();
-  const payload = await verifyToken(token);
-  if (!payload) return unauthorizedResponse();
+const bodySchema = z
+  .object({
+    action: z.enum(["APPROVE", "REJECT"]).default("APPROVE"),
+    rejectNote: z.string().max(1000).optional(),
+  })
+  .refine((d) => d.action !== "REJECT" || (d.rejectNote && d.rejectNote.trim().length > 0), {
+    message: "กรุณาระบุเหตุผลหรือสิ่งที่ต้องการให้ปรับแผน",
+    path: ["rejectNote"],
+  });
 
-  if (payload.role !== "CUSTOMER") {
+export async function PATCH(req: NextRequest, { params }: Params) {
+  const auth = await getAuth(req);
+  if (!auth) return unauthorizedResponse();
+  if (auth.role !== "CUSTOMER") {
     return forbiddenResponse("เฉพาะลูกค้าเท่านั้นที่สามารถอนุมัติแผนงานได้");
   }
 
   const { id } = await params;
-  const workPlan = await prisma.workPlan.findUnique({
-    where: { id },
-    include: { job: true, materials: { include: { material: true } } },
-  });
-
+  const workPlan = await prisma.workPlan.findUnique({ where: { id }, include: { job: true } });
   if (!workPlan) return notFoundResponse("ไม่พบแผนงาน");
-
-  if (workPlan.job.customerId !== payload.sub) {
+  if (workPlan.job.customerId !== auth.sub) {
     return forbiddenResponse("คุณไม่มีสิทธิ์อนุมัติแผนงานนี้");
   }
 
-  if (workPlan.job.status !== "APPROVE" || workPlan.status !== "DRAFT") {
-    return errorResponse("แผนงานนี้ไม่อยู่ในสถานะที่อนุมัติได้", 422);
+  const raw = await req.json().catch(() => ({}));
+  const parsed = bodySchema.safeParse(raw ?? {});
+  if (!parsed.success) {
+    return errorResponse(parsed.error.errors[0].message, 422, parsed.error.flatten().fieldErrors);
   }
+  const { action, rejectNote } = parsed.data;
 
   try {
     const updated = await prisma.$transaction(async (tx) => {
-      // อัปเดตสถานะ WorkPlan เป็น APPROVED
-      const plan = await tx.workPlan.update({
-        where: { id },
-        data: { status: "APPROVED" },
+      // อัปเดตแบบมีเงื่อนไข กันกดซ้ำหรือกดพร้อมกันหลายแท็บ
+      const changed = await tx.workPlan.updateMany({
+        where: { id, status: "DRAFT", job: { status: "APPROVE" } },
+        data:
+          action === "APPROVE"
+            ? { status: "APPROVED", rejectNote: null }
+            : { status: "REJECTED", rejectNote: rejectNote!.trim() },
       });
+      if (changed.count === 0) throw new ApiError("แผนงานนี้ไม่อยู่ในสถานะที่อนุมัติได้", 422);
 
-      // อัปเดตสถานะ Job เป็น PLAN_APPROVED
-      await tx.job.update({
-        where: { id: workPlan.jobId },
-        data: { status: "PLAN_APPROVED" },
-      });
-
-      return plan;
+      if (action === "APPROVE") {
+        await tx.job.update({ where: { id: workPlan.jobId }, data: { status: "PLAN_APPROVED" } });
+      }
+      return tx.workPlan.findUnique({ where: { id } });
     });
 
-    return successResponse(updated, "อนุมัติแผนงานสำเร็จ");
-  } catch (error: any) {
-    return errorResponse(error.message || "เกิดข้อผิดพลาดในการอนุมัติแผนงาน", 500);
+    return successResponse(
+      updated,
+      action === "APPROVE" ? "อนุมัติแผนงานสำเร็จ" : "ส่งแผนงานกลับให้หัวหน้าช่างปรับปรุงแล้ว"
+    );
+  } catch (error) {
+    if (error instanceof ApiError) return errorResponse(error.message, error.status);
+    console.error("[WORKPLAN_APPROVE_ERROR]", error);
+    return errorResponse("เกิดข้อผิดพลาดในการอนุมัติแผนงาน", 500);
   }
 }

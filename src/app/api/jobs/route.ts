@@ -28,6 +28,7 @@ export async function GET(req: NextRequest) {
         installation: true,
         repair: true,
         service: true,
+        workPlan: { select: { id: true, status: true, startDate: true, endDate: true } },
       },
       orderBy: { createdAt: "desc" },
     });
@@ -38,13 +39,27 @@ export async function GET(req: NextRequest) {
         customer: { select: { customerName: true, customerPhone: true } },
         quotation: { select: { totalAmount: true } },
         receipt: { include: { payments: { orderBy: { paymentDate: "desc" } } } },
+        workPlan: { select: { technicians: { select: { employee: { select: { employeeName: true } } } } } },
       },
       orderBy: { createdAt: "desc" },
     });
   } else if (payload.role === "HEAD_TECHNICIAN" || payload.role === "TECHNICIAN") {
     jobs = await prisma.job.findMany({
       where: status ? { status: status as never } : {},
-      include: { customer: { select: { customerName: true, customerPhone: true } }, installation: true, repair: true, service: true },
+      include: {
+        customer: { select: { customerName: true, customerPhone: true } },
+        installation: true,
+        repair: true,
+        service: true,
+        workPlan: {
+          include: {
+            materials: { include: { material: { select: { materialName: true, stockQuantity: true } } } },
+            technicians: { include: { employee: { select: { id: true, employeeName: true, role: true } } } },
+          },
+        },
+        safetyChecks: { orderBy: { checkedAt: "desc" }, take: 1 },
+        surveys: { orderBy: { surveyDate: "desc" }, take: 1, select: { id: true, method: true, surveyDate: true } },
+      },
       orderBy: { createdAt: "desc" },
     });
   } else if (payload.role === "ACCOUNTANT") {

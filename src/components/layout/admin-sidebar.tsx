@@ -3,13 +3,15 @@
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { Building2, Users, LayoutDashboard, ClipboardCheck } from "lucide-react";
+import { Building2, Users, LayoutDashboard, ClipboardCheck, CalendarClock, BarChart3 } from "lucide-react";
 import { cn } from "@/lib/utils";
 
 const NAV_ITEMS = [
   { href: "/admin/dashboard", label: "Dashboard", icon: LayoutDashboard },
   { href: "/admin/customers/pending", label: "อนุมัติลูกค้า", icon: Users },
   { href: "/admin/service-history", label: "บันทึกประวัติบริการ", icon: ClipboardCheck },
+  { href: "/admin/service-rounds", label: "รอบบำรุงรักษา", icon: CalendarClock },
+  { href: "/admin/reports", label: "รายงาน", icon: BarChart3 },
 ];
 
 export function AdminSidebar() {

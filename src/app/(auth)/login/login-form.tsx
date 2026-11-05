@@ -41,6 +41,8 @@ export function LoginForm() {
   const searchParams = useSearchParams();
   const redirectTo = safeRedirect(searchParams.get("redirect"));
   const [serverError, setServerError] = useState<string | null>(null);
+  // ลูกค้าที่ธุรการไม่อนุมัติ → แสดงเหตุผลและทางไปแก้ไขข้อมูล
+  const [rejected, setRejected] = useState<{ username: string; note: string | null } | null>(null);
 
   const {
     register,
@@ -52,6 +54,7 @@ export function LoginForm() {
 
   const onSubmit = async (data: LoginInput) => {
     setServerError(null);
+    setRejected(null);
     // ถ้า browser บล็อก cookie จะ login สำเร็จแต่ถูกเด้งกลับมาหน้านี้ตลอด → แจ้งผู้ใช้แทน
     if (!cookiesWork()) {
       setServerError("เบราว์เซอร์ของคุณปิดการใช้งาน Cookie กรุณาอนุญาต Cookie สำหรับเว็บไซต์นี้แล้วลองใหม่อีกครั้ง");
@@ -68,6 +71,9 @@ export function LoginForm() {
 
       if (!res.ok) {
         setServerError(result.message ?? "เข้าสู่ระบบไม่สำเร็จ");
+        if (result.errors?.code === "CUSTOMER_REJECTED") {
+          setRejected({ username: data.username, note: result.errors.rejectNote ?? null });
+        }
         return;
       }
 
@@ -97,6 +103,21 @@ export function LoginForm() {
             {serverError && (
               <div className="bg-destructive/10 border border-destructive/30 text-destructive text-sm rounded-md px-4 py-3">
                 {serverError}
+                {rejected && (
+                  <div className="mt-2 space-y-2 text-foreground">
+                    {rejected.note && (
+                      <p>
+                        <span className="font-medium">เหตุผล:</span> {rejected.note}
+                      </p>
+                    )}
+                    <Link
+                      href={`/register/resubmit?username=${encodeURIComponent(rejected.username)}`}
+                      className="inline-block text-primary font-medium hover:underline"
+                    >
+                      แก้ไขข้อมูลและส่งให้ตรวจสอบใหม่ →
+                    </Link>
+                  </div>
+                )}
               </div>
             )}
 

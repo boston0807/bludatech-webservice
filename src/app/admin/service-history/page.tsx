@@ -22,6 +22,7 @@ type Job = {
   customer?: { customerName: string; customerPhone: string };
   quotation?: { totalAmount: string } | null;
   receipt?: { id: string; totalAmount: string; status: string; payments: Payment[] } | null;
+  workPlan?: { technicians: { employee: { employeeName: string } }[] } | null;
 };
 type Draft = { summary: string; technicianNames: string };
 
@@ -56,7 +57,14 @@ export default function ServiceHistoryApprovalPage() {
       if (res.ok && data.success) {
         setJobs(data.data);
         setDrafts(Object.fromEntries(
-          (data.data as Job[]).map((j) => [j.id, { summary: j.jobNote ?? "", technicianNames: "" }])
+          (data.data as Job[]).map((j) => [
+            j.id,
+            {
+              summary: j.jobNote ?? "",
+              // ค่าเริ่มต้น = ช่างที่ได้รับมอบหมายในแผนงาน (แก้ไขได้)
+              technicianNames: j.workPlan?.technicians.map((t) => t.employee.employeeName).join(", ") ?? "",
+            },
+          ])
         ));
       } else {
         showToast(data.message ?? "โหลดข้อมูลไม่สำเร็จ", "error");
@@ -196,7 +204,7 @@ export default function ServiceHistoryApprovalPage() {
                       <Label htmlFor={`tech-${job.id}`}>ช่างผู้ปฏิบัติงาน</Label>
                       <Input
                         id={`tech-${job.id}`}
-                        placeholder="เช่น สมชาย ใจดี, วิชัย ช่างดี (ว่างไว้ = ทีมช่างผู้ปฏิบัติงาน)"
+                        placeholder="เช่น สมชาย ใจดี, วิชัย ช่างดี (ว่างไว้ = ช่างที่ได้รับมอบหมายในแผนงาน)"
                         value={draft.technicianNames}
                         onChange={(e) => setDraft(job.id, "technicianNames", e.target.value)}
                         disabled={saving}

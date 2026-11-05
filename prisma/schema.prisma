@@ -58,14 +58,22 @@ enum QuotationStatus {
 enum WorkPlanStatus {
   DRAFT
   APPROVED
+  REJECTED // ลูกค้าไม่อนุมัติแผน → หัวหน้าช่างแก้แผนแล้วส่งใหม่ (BP ข้อ 11 → 9)
   IN_PROGRESS
   FINISHED
 }
 
 enum ReceiptStatus {
+  DRAFT // ระบบออกใบแจ้งหนี้อัตโนมัติเมื่อลูกค้าตรวจรับ รอพนักงานบัญชีตรวจสอบก่อนส่ง (BP ข้อ 17)
   UNPAID
   PAID
   CANCELLED
+}
+
+// วิธีประเมินหน้างาน — REMOTE = ประเมินจากข้อมูล/อาการที่ลูกค้าแจ้ง ไม่ต้องลงพื้นที่ (ใช้ได้เฉพาะงานซ่อม/บำรุง)
+enum SurveyMethod {
+  ONSITE
+  REMOTE
 }
 
 enum PaymentMethod {
@@ -88,6 +96,7 @@ model Customer {
   customerEmail   String?        @map("customer_email")
   taxId           String?        @map("tax_id")
   status          CustomerStatus @default(PENDING)
+  rejectNote      String?        @map("reject_note") // เหตุผลที่ธุรการไม่อนุมัติ ให้ลูกค้าแก้ไขแล้วส่งใหม่
   createdAt       DateTime       @default(now()) @map("created_at")
   updatedAt       DateTime       @updatedAt @map("updated_at")
 
@@ -105,8 +114,10 @@ model Employee {
   createdAt    DateTime     @default(now()) @map("created_at")
   updatedAt    DateTime     @updatedAt @map("updated_at")
 
-  surveys  Survey[]
-  receipts Receipt[]
+  surveys         Survey[]
+  receipts        Receipt[]
+  planAssignments WorkPlanTechnician[]
+  safetyChecks    SafetyCheck[]
 
   @@map("employees")
 }
@@ -124,18 +135,23 @@ model Job {
   jobNote     String?   @map("job_note")
   jobWage     Decimal   @default(0.00) @map("job_wage") @db.Decimal(10, 2)
   status      JobStatus @default(PENDING)
+  reworkNote  String?   @map("rework_note") // เหตุผลล่าสุดที่ลูกค้าตรวจรับไม่ผ่าน (BP ข้อ 16 → 14)
+  parentJobId String?   @map("parent_job_id") // ใบงานรอบบำรุงรายเดือนที่สร้างจากสัญญาบำรุง (ใบงาน SERVICE เดิม)
   createdAt   DateTime  @default(now()) @map("created_at")
   updatedAt   DateTime  @updatedAt @map("updated_at")
 
-  customer     Customer          @relation(fields: [customerId], references: [id])
-  installation JobInstallation?
-  repair       JobRepair?
-  service      JobService?
-  surveys      Survey[]
-  expenses     Expense[]
-  quotation    Quotation?
-  workPlan     WorkPlan?
-  receipt      Receipt?
+  customer      Customer         @relation(fields: [customerId], references: [id])
+  installation  JobInstallation?
+  repair        JobRepair?
+  service       JobService?
+  surveys       Survey[]
+  expenses      Expense[]
+  quotation     Quotation?
+  workPlan      WorkPlan?
+  receipt       Receipt?
+  safetyChecks  SafetyCheck[]
+  parentJob     Job?             @relation("ServiceRounds", fields: [parentJobId], references: [id])
+  serviceRounds Job[]            @relation("ServiceRounds")
 
   @@map("jobs")
 }
@@ -145,12 +161,12 @@ model Job {
 // ─────────────────────────────────────────────
 
 model JobInstallation {
-  jobId          String  @id @map("job_id")
-  buildingFloor  Int     @map("building_floor")
-  elevatorBrand  String? @map("elevator_brand")
-  elevatorModel  String? @map("elevator_model")
-  elevatorType   String? @map("elevator_type")
-  quantity       Int     @default(1)
+  jobId         String  @id @map("job_id")
+  buildingFloor Int     @map("building_floor")
+  elevatorBrand String? @map("elevator_brand")
+  elevatorModel String? @map("elevator_model")
+  elevatorType  String? @map("elevator_type")
+  quantity      Int     @default(1)
 
   job Job @relation(fields: [jobId], references: [id], onDelete: Cascade)
 
@@ -168,10 +184,11 @@ model JobRepair {
 }
 
 model JobService {
-  jobId          String    @id @map("job_id")
-  elevatorModel  String?   @map("elevator_model")
-  quantity       Int       @default(1)
-  endServiceDate DateTime? @map("end_service_date")
+  jobId           String    @id @map("job_id")
+  elevatorModel   String?   @map("elevator_model")
+  quantity        Int       @default(1)
+  endServiceDate  DateTime? @map("end_service_date")
+  nextServiceDate DateTime? @map("next_service_date") // กำหนดรอบบำรุงครั้งถัดไป (BP ข้อ 19)
 
   job Job @relation(fields: [jobId], references: [id], onDelete: Cascade)
 
@@ -183,14 +200,15 @@ model JobService {
 // ─────────────────────────────────────────────
 
 model Survey {
-  id           String   @id @default(cuid()) @map("survey_id")
-  jobId        String   @map("job_id")
-  technicianId String   @map("technician_id")
-  surveyDate   DateTime @default(now()) @map("survey_date")
+  id           String       @id @default(cuid()) @map("survey_id")
+  jobId        String       @map("job_id")
+  technicianId String       @map("technician_id")
+  surveyDate   DateTime     @default(now()) @map("survey_date")
+  method       SurveyMethod @default(ONSITE)
   note         String?
 
-  job        Job      @relation(fields: [jobId], references: [id])
-  technician Employee @relation(fields: [technicianId], references: [id])
+  job        Job        @relation(fields: [jobId], references: [id])
+  technician Employee   @relation(fields: [technicianId], references: [id])
   workPlans  WorkPlan[]
 
   @@map("surveys")
@@ -232,21 +250,35 @@ model Quotation {
 // ─────────────────────────────────────────────
 
 model WorkPlan {
-  id        String         @id @default(cuid()) @map("plan_id")
-  jobId     String         @unique @map("job_id")
-  surveyId  String?        @map("survey_id")
-  location  String?
-  startDate DateTime       @map("start_date")
-  endDate   DateTime       @map("end_date")
-  status    WorkPlanStatus @default(DRAFT)
-  createdAt DateTime       @default(now()) @map("created_at")
-  updatedAt DateTime       @updatedAt @map("updated_at")
+  id         String         @id @default(cuid()) @map("plan_id")
+  jobId      String         @unique @map("job_id")
+  surveyId   String?        @map("survey_id")
+  location   String?
+  startDate  DateTime       @map("start_date")
+  endDate    DateTime       @map("end_date")
+  status     WorkPlanStatus @default(DRAFT)
+  rejectNote String?        @map("reject_note") // เหตุผลที่ลูกค้าไม่อนุมัติแผน
+  createdAt  DateTime       @default(now()) @map("created_at")
+  updatedAt  DateTime       @updatedAt @map("updated_at")
 
-  job       Job                @relation(fields: [jobId], references: [id])
-  survey    Survey?            @relation(fields: [surveyId], references: [id])
-  materials WorkPlanMaterial[]
+  job         Job                  @relation(fields: [jobId], references: [id])
+  survey      Survey?              @relation(fields: [surveyId], references: [id])
+  materials   WorkPlanMaterial[]
+  technicians WorkPlanTechnician[]
 
   @@map("work_plans")
+}
+
+// ช่างที่ได้รับมอบหมายในแผนงาน — ใช้ตรวจตารางงานชนกัน (ปัญหา BP ข้อ 3)
+model WorkPlanTechnician {
+  planId     String @map("plan_id")
+  employeeId String @map("employee_id")
+
+  workPlan WorkPlan @relation(fields: [planId], references: [id], onDelete: Cascade)
+  employee Employee @relation(fields: [employeeId], references: [id])
+
+  @@id([planId, employeeId])
+  @@map("work_plan_technicians")
 }
 
 model Material {
@@ -279,14 +311,14 @@ model WorkPlanMaterial {
 model Receipt {
   id          String        @id @default(cuid()) @map("receipt_id")
   jobId       String        @unique @map("job_id")
-  employeeId  String        @map("employee_id")
+  employeeId  String?       @map("employee_id") // null = ระบบออกอัตโนมัติ ยังไม่มีพนักงานบัญชีตรวจสอบ
   totalAmount Decimal       @map("total_amount") @db.Decimal(10, 2)
   status      ReceiptStatus @default(UNPAID)
   createdAt   DateTime      @default(now()) @map("created_at")
   updatedAt   DateTime      @updatedAt @map("updated_at")
 
   job      Job       @relation(fields: [jobId], references: [id])
-  employee Employee  @relation(fields: [employeeId], references: [id])
+  employee Employee? @relation(fields: [employeeId], references: [id])
   payments Payment[]
 
   @@map("receipts")
@@ -305,6 +337,26 @@ model Payment {
   receipt Receipt @relation(fields: [receiptId], references: [id])
 
   @@map("payments")
+}
+
+// ─────────────────────────────────────────────
+// SAFETY CHECKLIST (UC13)
+// ─────────────────────────────────────────────
+
+// ผลการทดสอบความปลอดภัยแต่ละรอบ — เก็บทุกรอบ (รวมรอบที่ไม่ผ่าน) เพื่อตรวจสอบย้อนหลัง
+model SafetyCheck {
+  id           String   @id @default(cuid()) @map("check_id")
+  jobId        String   @map("job_id")
+  technicianId String   @map("technician_id")
+  passed       Boolean
+  items        Json // [{ key, label, passed, remark }] ตามรายการมาตรฐานใน src/lib/safety-checklist.ts
+  note         String?
+  checkedAt    DateTime @default(now()) @map("checked_at")
+
+  job        Job      @relation(fields: [jobId], references: [id])
+  technician Employee @relation(fields: [technicianId], references: [id])
+
+  @@map("safety_checks")
 }
 
 // ─────────────────────────────────────────────

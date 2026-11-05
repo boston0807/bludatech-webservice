@@ -14,11 +14,13 @@ import { sendQuotationCreatedEmail } from "@/lib/email";
 
 type Params = { params: Promise<{ id: string }> };
 
+// ยอดรวมคำนวณที่ server เสมอ = ค่าอะไหล่จากผลสำรวจ (expenses) + ค่าแรง (UC06 ข้อ 7)
+// ไม่รับ totalAmount จากหน้าเว็บ กันยอดไม่ตรงกับรายการที่ช่างประเมิน (ปัญหาข้อ 2)
 const createQuotationBodySchema = z.object({
-  totalAmount: z
-    .number({ invalid_type_error: "กรุณากรอกจำนวนเงิน" })
-    .min(0, "จำนวนเงินต้องไม่ติดลบ"),
-  jobWage: z.number().min(0).optional(),
+  jobWage: z
+    .number({ invalid_type_error: "กรุณากรอกค่าแรงเป็นตัวเลข" })
+    .min(0, "ค่าแรงต้องไม่ติดลบ")
+    .default(0),
 });
 
 // POST /api/jobs/:id/quotation — สร้างใบเสนอราคา (ACCOUNTANT เท่านั้น)
@@ -33,7 +35,7 @@ export async function POST(req: NextRequest, { params }: Params) {
   try {
     const job = await prisma.job.findUnique({
       where: { id: jobId },
-      include: { quotation: true, customer: true },
+      include: { quotation: true, customer: true, expenses: true },
     });
     if (!job) return notFoundResponse("ไม่พบใบงาน");
 
@@ -52,27 +54,20 @@ export async function POST(req: NextRequest, { params }: Params) {
       return errorResponse("ข้อมูลไม่ถูกต้อง", 422, parsed.error.flatten().fieldErrors);
     }
 
+    const jobWage = Math.round(parsed.data.jobWage * 100) / 100;
+    const materialTotal = job.expenses.reduce((sum, e) => sum + Number(e.price) * e.quantity, 0);
+    const totalAmount = Math.round((materialTotal + jobWage) * 100) / 100;
+
     // สร้าง quotation และอัปเดต job status และ jobWage ใน transaction
     const [quotation] = await prisma.$transaction([
       prisma.quotation.upsert({
         where: { jobId },
-        create: {
-          jobId,
-          totalAmount: parsed.data.totalAmount,
-          status: "PENDING",
-        },
-        update: {
-          totalAmount: parsed.data.totalAmount,
-          status: "PENDING",
-          rejectNote: null,
-        },
+        create: { jobId, totalAmount, status: "PENDING" },
+        update: { totalAmount, status: "PENDING", rejectNote: null },
       }),
       prisma.job.update({
         where: { id: jobId },
-        data: {
-          status: "QUOTED",
-          ...(parsed.data.jobWage !== undefined && { jobWage: parsed.data.jobWage }),
-        },
+        data: { status: "QUOTED", jobWage },
       }),
     ]);
 
@@ -82,11 +77,11 @@ export async function POST(req: NextRequest, { params }: Params) {
         to: job.customer.customerEmail,
         customerName: job.customer.customerName,
         jobId,
-        totalAmount: parsed.data.totalAmount,
+        totalAmount,
       });
     }
 
-    return successResponse(quotation, 201);
+    return successResponse({ ...quotation, materialTotal, jobWage }, 201);
   } catch (error) {
     console.error("[CREATE_QUOTATION_ERROR]", error);
     return errorResponse("เกิดข้อผิดพลาดในการสร้างใบเสนอราคา", 500);

@@ -1,19 +1,17 @@
 // src/app/api/jobs/[id]/start/route.ts
 import { NextRequest } from "next/server";
 import { prisma } from "@/lib/prisma";
-import { verifyToken, AUTH_COOKIE_NAME } from "@/lib/auth";
+import { getAuth } from "@/lib/api-auth";
 import { ApiError, successResponse, errorResponse, unauthorizedResponse, forbiddenResponse, notFoundResponse } from "@/lib/api-response";
+import { canWorkOnPlan } from "@/lib/work-schedule";
 
 type Params = { params: Promise<{ id: string }> };
 
-// PATCH /api/jobs/:id/start - UC12 เริ่มปฏิบัติงาน
+// PATCH /api/jobs/:id/start - UC12 เริ่มปฏิบัติงาน (ตัดสต็อกอะไหล่ที่จองไว้)
 export async function PATCH(req: NextRequest, { params }: Params) {
-  const token = req.cookies.get(AUTH_COOKIE_NAME)?.value;
-  if (!token) return unauthorizedResponse();
-  const payload = await verifyToken(token);
-  if (!payload) return unauthorizedResponse();
-
-  if (payload.role !== "TECHNICIAN" && payload.role !== "HEAD_TECHNICIAN" && payload.role !== "ADMIN") {
+  const auth = await getAuth(req);
+  if (!auth) return unauthorizedResponse();
+  if (auth.role !== "TECHNICIAN" && auth.role !== "HEAD_TECHNICIAN" && auth.role !== "ADMIN") {
     return forbiddenResponse("เฉพาะช่างที่สามารถเริ่มปฏิบัติงานได้");
   }
 
@@ -24,15 +22,18 @@ export async function PATCH(req: NextRequest, { params }: Params) {
     return errorResponse("ใบงานต้องอยู่ในสถานะ PLAN_APPROVED (แผนงานอนุมัติแล้ว) จึงจะเริ่มงานได้", 422);
   }
 
-  // ตัดสต็อกอะไหล่จริงตามที่จองใน workPlan
   const workPlan = await prisma.workPlan.findUnique({
     where: { jobId: id },
-    include: { materials: { include: { material: true } } },
+    include: { materials: { include: { material: true } }, technicians: true },
   });
+
+  const assignedIds = workPlan?.technicians.map((t) => t.employeeId) ?? [];
+  if (!canWorkOnPlan(auth.role, auth.sub, assignedIds)) {
+    return forbiddenResponse("งานนี้ไม่ได้มอบหมายให้คุณ กรุณาติดต่อหัวหน้าช่าง");
+  }
 
   try {
     await prisma.$transaction(async (tx) => {
-      // เปลี่ยนสถานะแบบมีเงื่อนไขก่อน กันการตัดสต็อกซ้ำเมื่อกดเริ่มงานพร้อมกัน
       const started = await tx.job.updateMany({
         where: { id, status: "PLAN_APPROVED" },
         data: { status: "IN_PROGRESS" },
@@ -43,22 +44,29 @@ export async function PATCH(req: NextRequest, { params }: Params) {
 
       if (workPlan && workPlan.materials.length > 0) {
         for (const wpMat of workPlan.materials) {
-          // ตัดสต็อกเฉพาะเมื่อมีของเพียงพอ ถ้าไม่พอจะ rollback ทั้ง transaction
           const deducted = await tx.material.updateMany({
             where: { id: wpMat.materialId, stockQuantity: { gte: wpMat.quantity } },
             data: { stockQuantity: { decrement: wpMat.quantity } },
           });
           if (deducted.count === 0) {
-            throw new ApiError(`อะไหล่ "${wpMat.material.materialName}" ในคลังไม่เพียงพอ`, 422);
+            throw new ApiError(
+              `อะไหล่ "${wpMat.material.materialName}" ในคลังไม่เพียงพอ (ต้องใช้ ${wpMat.quantity} คงเหลือ ${wpMat.material.stockQuantity}) — แจ้งฝ่ายบัญชีสั่งซื้อเพิ่มได้ที่หน้า "สั่งซื้ออุปกรณ์"`,
+              422
+            );
           }
         }
+      }
+
+      if (workPlan) {
+        await tx.workPlan.update({ where: { id: workPlan.id }, data: { status: "IN_PROGRESS" } });
       }
     });
 
     const updated = await prisma.job.findUnique({ where: { id } });
     return successResponse(updated, "เริ่มปฏิบัติงานสำเร็จและตัดสต็อกอะไหล่เรียบร้อย");
-  } catch (error: any) {
+  } catch (error) {
     if (error instanceof ApiError) return errorResponse(error.message, error.status);
-    return errorResponse(error.message || "เกิดข้อผิดพลาด", 500);
+    console.error("[START_JOB_ERROR]", error);
+    return errorResponse("เกิดข้อผิดพลาดในการเริ่มปฏิบัติงาน", 500);
   }
 }

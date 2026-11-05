@@ -25,8 +25,18 @@ export async function GET(req: NextRequest, { params }: Params) {
       surveys: { include: { technician: { select: { employeeName: true } } } },
       expenses: true,
       quotation: true,
-      workPlan: { include: { materials: { include: { material: true } } } },
+      workPlan: {
+        include: {
+          materials: { include: { material: true } },
+          technicians: { include: { employee: { select: { id: true, employeeName: true, role: true } } } },
+        },
+      },
       receipt: { include: { payments: true } },
+      safetyChecks: {
+        orderBy: { checkedAt: "desc" },
+        include: { technician: { select: { employeeName: true } } },
+      },
+      parentJob: { select: { id: true, jobAddress: true } },
     },
   });
 
@@ -35,6 +45,11 @@ export async function GET(req: NextRequest, { params }: Params) {
   // Customer เห็นเฉพาะ job ของตัวเอง
   if (payload.role === "CUSTOMER" && job.customerId !== payload.sub) {
     return forbiddenResponse();
+  }
+
+  // ใบแจ้งหนี้ร่างยังไม่ผ่านการตรวจสอบจากฝ่ายบัญชี → ลูกค้ายังไม่เห็น
+  if (payload.role === "CUSTOMER" && job.receipt?.status === "DRAFT") {
+    return successResponse({ ...job, receipt: null, invoicePendingReview: true });
   }
 
   return successResponse(job);

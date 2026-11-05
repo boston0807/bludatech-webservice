@@ -25,7 +25,15 @@ export async function POST(req: NextRequest) {
         return errorResponse("บัญชีของคุณยังรอการอนุมัติจากเจ้าหน้าที่", 403);
       }
       if (customer.status === "REJECTED") {
-        return errorResponse("บัญชีของคุณถูกปฏิเสธ กรุณาติดต่อเจ้าหน้าที่", 403);
+        // ไม่บอกเหตุผลก่อนยืนยันรหัสผ่าน กันคนอื่นเดา username แล้วเห็นข้อมูล
+        const validForReason = await bcrypt.compare(password, customer.password);
+        return errorResponse(
+          "บัญชีของคุณยังไม่ผ่านการอนุมัติ กรุณาแก้ไขข้อมูลและส่งใหม่",
+          403,
+          validForReason
+            ? { code: "CUSTOMER_REJECTED", rejectNote: customer.rejectNote, resubmitUrl: "/register/resubmit" }
+            : { code: "CUSTOMER_REJECTED", resubmitUrl: "/register/resubmit" }
+        );
       }
 
       const valid = await bcrypt.compare(password, customer.password);

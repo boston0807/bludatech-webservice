@@ -111,8 +111,9 @@ export async function sendCustomerApprovalEmail(params: {
   to: string;
   customerName: string;
   action: "APPROVE" | "REJECT";
+  rejectNote?: string | null;
 }): Promise<void> {
-  const { to, customerName, action } = params;
+  const { to, customerName, action, rejectNote } = params;
 
   if (action === "APPROVE") {
     const subject = "✅ บัญชีของคุณได้รับการอนุมัติแล้ว — Bludatech Service";
@@ -130,9 +131,11 @@ export async function sendCustomerApprovalEmail(params: {
     const html = baseTemplate("คำขอสมัครสมาชิกไม่ได้รับการอนุมัติ", `
       <p style="color:#374151;font-size:14px;line-height:1.6;">เรียนคุณ <strong>${customerName}</strong>,</p>
       <p style="color:#374151;font-size:14px;line-height:1.6;">
-        ขออภัย คำขอสมัครสมาชิกของคุณไม่ได้รับการอนุมัติในครั้งนี้
-        หากมีข้อสงสัยกรุณาติดต่อเจ้าหน้าที่
+        ขออภัย คำขอสมัครสมาชิกของคุณยังไม่ได้รับการอนุมัติ
+        กรุณาแก้ไขข้อมูลตามเหตุผลด้านล่างแล้วส่งคำขอใหม่อีกครั้ง
       </p>
+      ${rejectNote ? `<table cellpadding="0" cellspacing="0" style="margin-top:16px;">${infoRow("เหตุผล", rejectNote)}</table>` : ""}
+      ${btn(`${APP_URL}/register/resubmit`, "แก้ไขข้อมูลและส่งใหม่")}
     `);
     await sendMail(to, subject, html);
   }
@@ -247,6 +250,38 @@ export async function sendWorkPlanCreatedEmail(params: {
       ${infoRow("วันที่สิ้นสุด", fmt(endDate))}
     </table>
     ${btn(`${APP_URL}/jobs/${jobId}`, "ดูรายละเอียดงาน")}
+  `);
+  await sendMail(to, subject, html);
+}
+
+// ─────────────────────────────────────────────
+// BP ข้อ 19 — แจ้งเตือนรอบบำรุงรักษาประจำเดือน
+// ─────────────────────────────────────────────
+
+export async function sendServiceRoundEmail(params: {
+  to: string;
+  customerName: string;
+  jobId: string;
+  roundNumber: number;
+  dueDate: Date;
+  jobAddress: string;
+}): Promise<void> {
+  const { to, customerName, jobId, roundNumber, dueDate, jobAddress } = params;
+  const due = dueDate.toLocaleDateString("th-TH", { year: "numeric", month: "long", day: "numeric", timeZone: "Asia/Bangkok" });
+  const subject = `🔧 ถึงกำหนดบำรุงรักษาลิฟต์ประจำเดือน (ครั้งที่ ${roundNumber}) — Bludatech Service`;
+  const html = baseTemplate("ถึงกำหนดบำรุงรักษาลิฟต์ประจำเดือน", `
+    <p style="color:#374151;font-size:14px;line-height:1.6;">เรียนคุณ <strong>${customerName}</strong>,</p>
+    <p style="color:#374151;font-size:14px;line-height:1.6;">
+      ลิฟต์ของคุณถึงกำหนดบำรุงรักษาตามสัญญา ระบบได้สร้างใบงานรอบนี้ให้เรียบร้อยแล้ว
+      ทีมช่างจะติดต่อเพื่อนัดหมายวันเข้าดำเนินงาน
+    </p>
+    <table cellpadding="0" cellspacing="0" style="margin-top:16px;">
+      ${infoRow("หมายเลขใบงาน", jobId)}
+      ${infoRow("รอบบำรุงครั้งที่", String(roundNumber))}
+      ${infoRow("กำหนดบำรุง", due)}
+      ${infoRow("สถานที่", jobAddress)}
+    </table>
+    ${btn(`${APP_URL}/jobs/${jobId}`, "ดูใบงาน")}
   `);
   await sendMail(to, subject, html);
 }

@@ -1,7 +1,8 @@
 // src/app/admin/dashboard/page.tsx
 import Link from "next/link";
-import { Users, ClipboardCheck } from "lucide-react";
+import { Users, ClipboardCheck, BarChart3 } from "lucide-react";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
+import { ServiceRoundsPanel } from "@/components/dashboard/widgets";
 
 export default function AdminDashboard() {
   return (
@@ -10,6 +11,8 @@ export default function AdminDashboard() {
         <h1 className="text-2xl font-bold tracking-tight">Dashboard</h1>
         <p className="text-muted-foreground">ยินดีต้อนรับ พนักงานธุรการ</p>
       </div>
+
+      <ServiceRoundsPanel />
 
       <div className="grid grid-cols-1 gap-4">
         <Link href="/admin/customers/pending">
@@ -32,6 +35,18 @@ export default function AdminDashboard() {
             </CardHeader>
             <CardContent>
               <CardDescription>ตรวจสอบใบงานที่ชำระเงินแล้ว และอนุมัติบันทึกประวัติเพื่อปิดงาน</CardDescription>
+            </CardContent>
+          </Card>
+        </Link>
+
+        <Link href="/admin/reports">
+          <Card className="hover:shadow-md transition-shadow cursor-pointer">
+            <CardHeader className="flex flex-row items-center gap-3 pb-2">
+              <BarChart3 className="h-6 w-6 text-primary" />
+              <CardTitle className="text-base">รายงาน</CardTitle>
+            </CardHeader>
+            <CardContent>
+              <CardDescription>สรุปงานตามประเภท ประวัติการให้บริการ และการใช้วัสดุ/สต็อกคงเหลือ</CardDescription>
             </CardContent>
           </Card>
         </Link>

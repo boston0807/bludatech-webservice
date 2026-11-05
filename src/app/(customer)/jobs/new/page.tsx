@@ -165,8 +165,24 @@ export default function NewJobPage() {
 
               {/* หมายเหตุ */}
               <div className="space-y-2">
-                <Label htmlFor="jobNote">หมายเหตุ / รายละเอียดเพิ่มเติม</Label>
-                <Input id="jobNote" placeholder="อธิบายอาการขัดข้อง หรือรายละเอียดเพิ่มเติม (ถ้ามี)" {...register("jobNote")} />
+                <Label htmlFor="jobNote">
+                  {selectedType === "INSTALLATION" ? "หมายเหตุ / รายละเอียดเพิ่มเติม" : "อาการที่พบ / รายละเอียดงาน"}
+                </Label>
+                <textarea
+                  id="jobNote"
+                  className="flex min-h-20 w-full rounded-md border border-input bg-background px-3 py-2 text-sm"
+                  placeholder={
+                    selectedType === "INSTALLATION"
+                      ? "รายละเอียดเพิ่มเติม (ถ้ามี)"
+                      : "เช่น ประตูชั้น 3 ปิดไม่สนิท มีเสียงดังตอนขึ้น เกิดขึ้นตั้งแต่เมื่อไร เป็นทุกครั้งหรือบางครั้ง"
+                  }
+                  {...register("jobNote")}
+                />
+                {selectedType !== "INSTALLATION" && (
+                  <p className="text-xs text-muted-foreground">
+                    ยิ่งอธิบายอาการละเอียด ช่างยิ่งประเมินราคาได้เร็วโดยอาจไม่ต้องนัดเข้าสำรวจหน้างาน
+                  </p>
+                )}
               </div>
 
               <div className="flex gap-3 pt-2">

@@ -22,6 +22,7 @@ type Customer = {
   taxId: string | null;
   customerAddress: string;
   status: "PENDING" | "ACTIVE" | "REJECTED";
+  rejectNote: string | null; // มีค่า = ลูกค้าแก้ไขข้อมูลแล้วส่งใหม่หลังเคยไม่ผ่าน
   createdAt: string;
 };
 
@@ -29,6 +30,8 @@ export default function PendingCustomersPage() {
   const [customers, setCustomers] = useState<Customer[]>([]);
   const [loading, setLoading] = useState(true);
   const [actionLoading, setActionLoading] = useState<string | null>(null);
+  const [rejectingId, setRejectingId] = useState<string | null>(null);
+  const [rejectNote, setRejectNote] = useState("");
   const [toast, setToast] = useState<{ message: string; type: "success" | "error" } | null>(null);
 
   const showToast = (message: string, type: "success" | "error") => {
@@ -59,12 +62,16 @@ export default function PendingCustomersPage() {
   }, [fetchCustomers]);
 
   const handleAction = async (customerId: string, action: "APPROVE" | "REJECT") => {
+    if (action === "REJECT" && !rejectNote.trim()) {
+      showToast("กรุณาระบุเหตุผล เพื่อให้ลูกค้าแก้ไขข้อมูลได้ถูกต้อง", "error");
+      return;
+    }
     setActionLoading(customerId + action);
     try {
       const res = await fetch(`/api/admin/customers/${customerId}/approve`, {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ action }),
+        body: JSON.stringify(action === "REJECT" ? { action, rejectNote } : { action }),
       });
 
       const data = await res.json();
@@ -72,6 +79,8 @@ export default function PendingCustomersPage() {
       if (res.ok) {
         showToast(data.data.message, "success");
         setCustomers((prev) => prev.filter((c) => c.id !== customerId));
+        setRejectingId(null);
+        setRejectNote("");
       } else {
         showToast(data.message ?? "เกิดข้อผิดพลาด", "error");
       }
@@ -180,6 +189,27 @@ export default function PendingCustomersPage() {
                   </div>
                 </div>
 
+                {customer.rejectNote && (
+                  <div className="rounded-md border border-blue-200 bg-blue-50 px-3 py-2 text-xs text-blue-800">
+                    ลูกค้าแก้ไขข้อมูลแล้วส่งใหม่ — รอบก่อนไม่อนุมัติเพราะ: {customer.rejectNote}
+                  </div>
+                )}
+
+                {rejectingId === customer.id && (
+                  <div className="space-y-2">
+                    <label htmlFor={`reject-${customer.id}`} className="text-sm font-medium">
+                      เหตุผลที่ไม่อนุมัติ (ลูกค้าจะเห็นและแก้ไขตามนี้)
+                    </label>
+                    <input
+                      id={`reject-${customer.id}`}
+                      className="flex h-9 w-full rounded-md border border-input bg-background px-3 py-1 text-sm"
+                      placeholder="เช่น เลขประจำตัวผู้เสียภาษีไม่ถูกต้อง / ที่อยู่ไม่ครบ"
+                      value={rejectNote}
+                      onChange={(e) => setRejectNote(e.target.value)}
+                    />
+                  </div>
+                )}
+
                 {/* Action Buttons */}
                 <div className="flex gap-2 pt-1">
                   <Button
@@ -195,7 +225,11 @@ export default function PendingCustomersPage() {
                     อนุมัติ
                   </Button>
                   <Button
-                    onClick={() => handleAction(customer.id, "REJECT")}
+                    onClick={() =>
+                      rejectingId === customer.id
+                        ? handleAction(customer.id, "REJECT")
+                        : (setRejectingId(customer.id), setRejectNote(""))
+                    }
                     disabled={actionLoading !== null}
                     variant="destructive"
                     className="flex-1"
@@ -205,7 +239,7 @@ export default function PendingCustomersPage() {
                     ) : (
                       <XCircle className="h-4 w-4" />
                     )}
-                    ปฏิเสธ
+                    {rejectingId === customer.id ? "ยืนยันไม่อนุมัติ" : "ไม่อนุมัติ (ให้แก้ไข)"}
                   </Button>
                 </div>
               </CardContent>

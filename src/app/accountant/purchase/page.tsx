@@ -8,6 +8,17 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Badge } from "@/components/ui/badge";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
+import { thDate } from "@/lib/labels";
+
+type Shortage = {
+  id: string;
+  materialName: string;
+  price: number;
+  stockQuantity: number;
+  reservedQty: number;
+  shortageQty: number;
+  reservedBy: { jobId: string; customerName: string; jobAddress: string; startDate: string; quantity: number; jobStatus: string }[];
+};
 
 type Material = {
   id: string;
@@ -18,6 +29,8 @@ type Material = {
 
 export default function AccountantPurchasePage() {
   const [materials, setMaterials] = useState<Material[]>([]);
+  const [shortages, setShortages] = useState<Shortage[]>([]);
+  const [reservedById, setReservedById] = useState<Record<string, number>>({});
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [successMsg, setSuccessMsg] = useState<string | null>(null);
@@ -36,6 +49,15 @@ export default function AccountantPurchasePage() {
 
   const fetchMaterials = () => {
     setLoading(true);
+    // วัสดุที่แผนงานจองไว้เกินของในคลัง — ระบบคำนวณให้อัตโนมัติ ช่างไม่ต้องแจ้งนอกระบบ
+    fetch("/api/materials/shortages")
+      .then((r) => r.json())
+      .then((d) => {
+        if (!d.success) return;
+        setShortages(d.data.shortages);
+        setReservedById(Object.fromEntries(d.data.usage.map((u: { id: string; reservedQty: number }) => [u.id, u.reservedQty])));
+      })
+      .catch(() => {});
     fetch("/api/materials")
       .then((r) => r.json())
       .then((d) => {
@@ -127,6 +149,52 @@ export default function AccountantPurchasePage() {
       {error && <div className="p-4 bg-destructive/10 text-destructive text-sm rounded-md border border-destructive/30">{error}</div>}
       {successMsg && <div className="p-4 bg-green-50 text-green-700 text-sm rounded-md border border-green-200">{successMsg}</div>}
 
+      {/* UC11: รายการที่ต้องสั่งซื้อจากแผนงาน */}
+      {shortages.length > 0 && (
+        <Card className="border-amber-400">
+          <CardHeader className="pb-2">
+            <CardTitle className="text-base flex items-center gap-2 text-amber-800">
+              <AlertTriangle className="h-5 w-5" /> ต้องสั่งซื้อเพื่อให้เริ่มงานตามแผนได้ ({shortages.length} รายการ)
+            </CardTitle>
+            <CardDescription>
+              แผนงานที่ลูกค้าอนุมัติแล้วจองอะไหล่เกินจำนวนในคลัง งานจะเริ่มไม่ได้จนกว่าจะรับของเข้าสต็อก (เรียงตามวันเริ่มงาน)
+            </CardDescription>
+          </CardHeader>
+          <CardContent className="space-y-2">
+            {shortages.map((s) => (
+              <div key={s.id} className="flex flex-col md:flex-row md:items-center justify-between gap-2 rounded-md bg-amber-50 px-3 py-2">
+                <div className="text-sm">
+                  <p className="font-medium">
+                    {s.materialName} — ต้องซื้อเพิ่ม {s.shortageQty} ชิ้น
+                    <span className="text-muted-foreground font-normal"> (จองรวม {s.reservedQty} · คงเหลือ {s.stockQuantity})</span>
+                  </p>
+                  <ul className="text-xs text-muted-foreground">
+                    {s.reservedBy.map((r) => (
+                      <li key={r.jobId}>
+                        {r.customerName} — {r.quantity} ชิ้น · เริ่มงาน {thDate(r.startDate)}
+                      </li>
+                    ))}
+                  </ul>
+                </div>
+                <Button
+                  size="sm"
+                  className="bg-amber-600 hover:bg-amber-700 text-white shrink-0"
+                  onClick={() => {
+                    const mat = materials.find((m) => m.id === s.id);
+                    if (mat) {
+                      setRestockMaterial(mat);
+                      setAddQty(s.shortageQty);
+                    }
+                  }}
+                >
+                  <ShoppingCart className="h-4 w-4" /> รับเข้าสต็อก {s.shortageQty} ชิ้น
+                </Button>
+              </div>
+            ))}
+          </CardContent>
+        </Card>
+      )}
+
       {/* Add New Material Form */}
       {showAddForm && (
         <Card className="border-primary shadow-md">
@@ -194,7 +262,8 @@ export default function AccountantPurchasePage() {
       ) : (
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
           {materials.map((mat) => {
-            const isLow = mat.stockQuantity <= 5;
+            const isShort = (reservedById[mat.id] ?? 0) > mat.stockQuantity;
+            const isLow = !isShort && mat.stockQuantity - (reservedById[mat.id] ?? 0) <= 5;
             return (
               <Card key={mat.id} className="shadow-sm">
                 <CardHeader className="flex flex-row items-center justify-between pb-2">
@@ -204,8 +273,10 @@ export default function AccountantPurchasePage() {
                     </div>
                     <CardTitle className="text-base">{mat.materialName}</CardTitle>
                   </div>
-                  <Badge variant={isLow ? "warning" : "success"}>
-                    {isLow ? (
+                  <Badge variant={isShort ? "destructive" : isLow ? "warning" : "success"}>
+                    {isShort ? (
+                      <span className="flex items-center gap-1"><AlertTriangle className="h-3 w-3" /> ไม่พอสำหรับแผนงาน</span>
+                    ) : isLow ? (
                       <span className="flex items-center gap-1"><AlertTriangle className="h-3 w-3" /> ใกล้หมด</span>
                     ) : (
                       <span className="flex items-center gap-1"><CheckCircle2 className="h-3 w-3" /> ปกติ</span>
@@ -216,6 +287,10 @@ export default function AccountantPurchasePage() {
                   <div className="flex justify-between text-sm">
                     <span className="text-muted-foreground">คงเหลือในคลัง:</span>
                     <span className={`font-bold ${isLow ? "text-amber-600 text-base" : ""}`}>{mat.stockQuantity} ชิ้น</span>
+                  </div>
+                  <div className="flex justify-between text-sm">
+                    <span className="text-muted-foreground">จองไว้ในแผนงาน:</span>
+                    <span>{reservedById[mat.id] ?? 0} ชิ้น</span>
                   </div>
                   <div className="flex justify-between text-sm">
                     <span className="text-muted-foreground">ราคาต่อหน่วย:</span>

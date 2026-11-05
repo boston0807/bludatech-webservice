@@ -2,6 +2,7 @@
 import Link from "next/link";
 import { FilePlus, FileText, CreditCard } from "lucide-react";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
+import { CustomerServiceReminder } from "@/components/dashboard/widgets";
 
 export default function CustomerDashboard() {
   return (
@@ -10,6 +11,8 @@ export default function CustomerDashboard() {
         <h1 className="text-2xl font-bold tracking-tight">Dashboard</h1>
         <p className="text-muted-foreground">ยินดีต้อนรับ สู่ระบบบริการลิฟต์</p>
       </div>
+
+      <CustomerServiceReminder />
 
       <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
         <Link href="/jobs/new">

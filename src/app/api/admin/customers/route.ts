@@ -26,7 +26,9 @@ export async function GET(req: NextRequest) {
       taxId: true,
       customerAddress: true,
       status: true,
+      rejectNote: true, // ถ้าเป็นลูกค้าที่แก้ไขแล้วส่งใหม่ จะเห็นเหตุผลที่เคยไม่อนุมัติ
       createdAt: true,
+      updatedAt: true,
     },
     orderBy: { createdAt: "asc" },
   });

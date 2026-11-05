@@ -7,6 +7,7 @@ import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import Link from "next/link";
+import { RECEIPT_STATUS_LABEL } from "@/lib/labels";
 
 type Job = {
   id: string;
@@ -74,7 +75,7 @@ export default function AccountantInvoicesPage() {
       const res = await fetch(`/api/jobs/${jobId}/invoice`, { method: "POST" });
       const data = await res.json();
       if (data.success) {
-        setSuccessMsg("ออกใบแจ้งหนี้สำเร็จ");
+        setSuccessMsg(data.message ?? "ส่งใบแจ้งหนี้ให้ลูกค้าแล้ว");
         loadData();
       } else {
         setError(data.message || "ออกใบแจ้งหนี้ไม่สำเร็จ");
@@ -104,15 +105,18 @@ export default function AccountantInvoicesPage() {
           <div className="space-y-4">
             <h2 className="text-lg font-semibold flex items-center gap-2">
               <FileText className="h-5 w-5 text-primary" />
-              ใบงานที่พร้อมออกใบแจ้งหนี้ (สถานะ ACCEPTED)
+              ใบแจ้งหนี้ที่ระบบออกให้อัตโนมัติ รอตรวจสอบก่อนส่งลูกค้า
             </h2>
+            <p className="text-sm text-muted-foreground -mt-2">
+              ระบบสร้างใบแจ้งหนี้ร่างจากยอดใบเสนอราคาที่อนุมัติทันทีที่ลูกค้าตรวจรับงาน ตรวจความถูกต้องแล้วกดยืนยันเพื่อส่งให้ลูกค้าชำระ
+            </p>
 
-            {acceptedJobs.filter((j) => !j.receipt).length === 0 ? (
-              <Card><CardContent className="py-8 text-center text-muted-foreground text-sm">ไม่มีใบงานที่รอออกใบแจ้งหนี้</CardContent></Card>
+            {acceptedJobs.filter((j) => j.status === "ACCEPTED" && (!j.receipt || j.receipt.status === "DRAFT")).length === 0 ? (
+              <Card><CardContent className="py-8 text-center text-muted-foreground text-sm">ไม่มีใบแจ้งหนี้ที่รอตรวจสอบ</CardContent></Card>
             ) : (
               <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                 {acceptedJobs
-                  .filter((j) => !j.receipt)
+                  .filter((j) => j.status === "ACCEPTED" && (!j.receipt || j.receipt.status === "DRAFT"))
                   .map((job) => (
                     <Card key={job.id} className="shadow-sm">
                       <CardHeader className="pb-3">
@@ -121,7 +125,7 @@ export default function AccountantInvoicesPage() {
                             <CardTitle className="text-base">{job.customer?.customerName}</CardTitle>
                             <CardDescription>{job.jobAddress}</CardDescription>
                           </div>
-                          <Badge variant="success">ตรวจรับแล้ว (ACCEPTED)</Badge>
+                          <Badge variant="warning">{job.receipt ? "ใบร่าง รอตรวจสอบ" : "ยังไม่มีใบแจ้งหนี้"}</Badge>
                         </div>
                       </CardHeader>
                       <CardContent className="space-y-3">
@@ -137,7 +141,7 @@ export default function AccountantInvoicesPage() {
                             className="gap-1.5"
                           >
                             {actionLoading === job.id && <Loader2 className="h-4 w-4 animate-spin" />}
-                            <Receipt className="h-4 w-4" /> ออกใบแจ้งหนี้ (Invoice)
+                            <Receipt className="h-4 w-4" /> {job.receipt ? "ตรวจสอบแล้ว ส่งให้ลูกค้า" : "ออกใบแจ้งหนี้"}
                           </Button>
                         </div>
                       </CardContent>
@@ -164,8 +168,8 @@ export default function AccountantInvoicesPage() {
                       <div className="space-y-1">
                         <div className="flex items-center gap-2">
                           <span className="font-semibold text-base">{rec.job.customer.customerName}</span>
-                          <Badge variant={rec.status === "PAID" ? "success" : "warning"}>
-                            {rec.status === "PAID" ? "ชำระเงินแล้ว (PAID)" : "รอชำระเงิน (UNPAID)"}
+                          <Badge variant={rec.status === "PAID" ? "success" : rec.status === "DRAFT" ? "secondary" : "warning"}>
+                            {RECEIPT_STATUS_LABEL[rec.status] ?? rec.status}
                           </Badge>
                         </div>
                         <p className="text-xs text-muted-foreground">ที่อยู่: {rec.job.jobAddress}</p>

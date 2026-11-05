@@ -23,11 +23,16 @@ export async function PATCH(
   if (!payload || payload.role !== "ADMIN") return forbiddenResponse();
 
   const { id } = await params;
-  const body = await req.json();
-  const action = body.action as "APPROVE" | "REJECT";
+  const body = await req.json().catch(() => ({}));
+  const action = body?.action as "APPROVE" | "REJECT";
+  const rejectNote = typeof body?.rejectNote === "string" ? body.rejectNote.trim().slice(0, 1000) : "";
 
   if (!["APPROVE", "REJECT"].includes(action)) {
     return errorResponse("action ต้องเป็น APPROVE หรือ REJECT", 422);
+  }
+  // ไม่อนุมัติต้องบอกเหตุผล เพื่อให้ลูกค้าแก้ไขข้อมูลแล้วส่งใหม่ได้ (BP ข้อ 5 → 4)
+  if (action === "REJECT" && !rejectNote) {
+    return errorResponse("กรุณาระบุเหตุผลที่ไม่อนุมัติ เพื่อให้ลูกค้าแก้ไขข้อมูล", 422);
   }
 
   const customer = await prisma.customer.findUnique({ where: { id } });
@@ -39,10 +44,16 @@ export async function PATCH(
 
   const newStatus = action === "APPROVE" ? "ACTIVE" : "REJECTED";
 
-  const updated = await prisma.customer.update({
+  const changed = await prisma.customer.updateMany({
+    where: { id, status: "PENDING" },
+    data: { status: newStatus, rejectNote: action === "REJECT" ? rejectNote : null },
+  });
+  if (changed.count === 0) {
+    return errorResponse("ลูกค้ารายนี้ไม่อยู่ในสถานะรออนุมัติ", 400);
+  }
+  const updated = await prisma.customer.findUniqueOrThrow({
     where: { id },
-    data: { status: newStatus },
-    select: { id: true, username: true, customerName: true, customerEmail: true, status: true },
+    select: { id: true, username: true, customerName: true, customerEmail: true, status: true, rejectNote: true },
   });
 
   const message =
@@ -56,6 +67,7 @@ export async function PATCH(
       to: updated.customerEmail,
       customerName: updated.customerName,
       action,
+      rejectNote: updated.rejectNote,
     });
   }
 

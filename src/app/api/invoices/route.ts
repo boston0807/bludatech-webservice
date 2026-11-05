@@ -20,6 +20,7 @@ export async function GET(req: NextRequest) {
           job: {
             customerId: payload.sub,
           },
+          status: { not: "DRAFT" }, // ใบร่างรอฝ่ายบัญชีตรวจสอบ ยังไม่ส่งถึงลูกค้า
         },
         include: {
           job: { include: { customer: { omit: { password: true } } } },

@@ -3,12 +3,13 @@
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { Building2, LayoutDashboard, Briefcase, ClipboardCheck, Package } from "lucide-react";
+import { Building2, LayoutDashboard, Briefcase, ClipboardCheck, Package, CalendarDays } from "lucide-react";
 import { cn } from "@/lib/utils";
 
 const NAV_ITEMS = [
   { href: "/technician/dashboard", label: "Dashboard", icon: LayoutDashboard },
   { href: "/technician/jobs", label: "รายการใบงาน", icon: Briefcase },
+  { href: "/technician/schedule", label: "ตารางงาน", icon: CalendarDays },
   { href: "/technician/workplans", label: "แผนงาน", icon: ClipboardCheck },
   { href: "/technician/materials", label: "ตรวจสต็อก", icon: Package },
 ];

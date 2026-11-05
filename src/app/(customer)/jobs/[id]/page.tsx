@@ -15,7 +15,13 @@ import {
   MapPin,
   FileText,
   ClipboardCheck,
+  ShieldCheck,
+  XCircle,
+  AlertTriangle,
+  CalendarClock,
+  Users,
 } from "lucide-react";
+import { PLAN_STATUS_LABEL, PLAN_STATUS_VARIANT, thDate, thDateRange } from "@/lib/labels";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import {
@@ -51,10 +57,21 @@ type WorkPlan = {
   endDate: string;
   location: string | null;
   status: string;
+  rejectNote: string | null;
   materials?: {
     quantity: number;
     material: { materialName: string };
   }[];
+  technicians?: { employee: { employeeName: string } }[];
+};
+
+type SafetyCheck = {
+  id: string;
+  passed: boolean;
+  checkedAt: string;
+  note: string | null;
+  items: { key: string; label: string; passed: boolean; remark: string | null }[];
+  technician?: { employeeName: string };
 };
 
 type Job = {
@@ -65,6 +82,11 @@ type Job = {
   jobWage: string;
   status: string;
   requestDate: string;
+  reworkNote: string | null;
+  invoicePendingReview?: boolean;
+  receipt: { id: string; status: string } | null;
+  safetyChecks: SafetyCheck[];
+  parentJob: { id: string; jobAddress: string } | null;
   customer: {
     customerName: string;
     customerPhone: string;
@@ -79,7 +101,12 @@ type Job = {
     quantity: number;
   };
   repair?: { elevatorModel: string | null; quantity: number };
-  service?: { elevatorModel: string | null; quantity: number };
+  service?: {
+    elevatorModel: string | null;
+    quantity: number;
+    endServiceDate: string | null;
+    nextServiceDate: string | null;
+  };
   expenses: Expense[];
   quotation: Quotation | null;
   workPlan: WorkPlan | null;
@@ -178,6 +205,11 @@ export default function CustomerJobDetailPage({
   const [actionSuccess, setActionSuccess] = useState<string | null>(null);
   const [rejectNote, setRejectNote] = useState("");
   const [showRejectForm, setShowRejectForm] = useState(false);
+  // ไม่อนุมัติแผนงาน / ตรวจรับไม่ผ่าน ต้องระบุเหตุผล
+  const [planRejectNote, setPlanRejectNote] = useState("");
+  const [showPlanReject, setShowPlanReject] = useState(false);
+  const [acceptRejectNote, setAcceptRejectNote] = useState("");
+  const [showAcceptReject, setShowAcceptReject] = useState(false);
 
   const fetchJob = () => {
     setLoading(true);
@@ -240,17 +272,23 @@ export default function CustomerJobDetailPage({
     }
   };
 
-  const handleAcceptance = async () => {
+  const patchAction = async (url: string, body: object, success: string, after?: () => void) => {
     setActionLoading(true);
     setActionError(null);
+    setActionSuccess(null);
     try {
-      const res = await fetch(`/api/jobs/${id}/accept`, { method: "PATCH" });
+      const res = await fetch(url, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(body),
+      });
       const data = await res.json();
       if (!res.ok) {
         setActionError(data.message ?? "เกิดข้อผิดพลาด");
         return;
       }
-      setActionSuccess("ตรวจรับงานสำเร็จ");
+      setActionSuccess(data.message ?? success);
+      after?.();
       fetchJob();
     } catch {
       setActionError("เกิดข้อผิดพลาด กรุณาลองใหม่");
@@ -259,26 +297,39 @@ export default function CustomerJobDetailPage({
     }
   };
 
-  const handleApproveWorkPlan = async () => {
-    if (!job?.workPlan) return;
-    setActionLoading(true);
-    setActionError(null);
-    try {
-      const res = await fetch(`/api/workplans/${job.workPlan.id}/approve`, {
-        method: "PATCH",
-      });
-      const data = await res.json();
-      if (!res.ok) {
-        setActionError(data.message ?? "เกิดข้อผิดพลาด");
-        return;
-      }
-      setActionSuccess("อนุมัติแผนการทำงานสำเร็จ");
-      fetchJob();
-    } catch {
-      setActionError("เกิดข้อผิดพลาด กรุณาลองใหม่");
-    } finally {
-      setActionLoading(false);
+  // UC14 ตรวจรับงาน — ผ่าน / ไม่ผ่าน (ส่งกลับให้ช่างแก้ไข)
+  const handleAcceptance = (action: "ACCEPT" | "REJECT") => {
+    if (action === "REJECT" && !acceptRejectNote.trim()) {
+      setActionError("กรุณาระบุสิ่งที่ต้องการให้ช่างแก้ไข");
+      return;
     }
+    patchAction(
+      `/api/jobs/${id}/accept`,
+      action === "ACCEPT" ? { action } : { action, note: acceptRejectNote },
+      action === "ACCEPT" ? "ตรวจรับงานสำเร็จ" : "ส่งงานกลับให้ช่างแก้ไขแล้ว",
+      () => {
+        setShowAcceptReject(false);
+        setAcceptRejectNote("");
+      }
+    );
+  };
+
+  // UC09 อนุมัติแผนงาน — อนุมัติ / ขอให้ปรับแผน
+  const handleWorkPlanAction = (action: "APPROVE" | "REJECT") => {
+    if (!job?.workPlan) return;
+    if (action === "REJECT" && !planRejectNote.trim()) {
+      setActionError("กรุณาระบุสิ่งที่ต้องการให้ปรับแผน");
+      return;
+    }
+    patchAction(
+      `/api/workplans/${job.workPlan.id}/approve`,
+      action === "APPROVE" ? { action } : { action, rejectNote: planRejectNote },
+      action === "APPROVE" ? "อนุมัติแผนการทำงานสำเร็จ" : "ส่งแผนกลับให้หัวหน้าช่างปรับปรุงแล้ว",
+      () => {
+        setShowPlanReject(false);
+        setPlanRejectNote("");
+      }
+    );
   };
 
   if (loading) {
@@ -410,6 +461,13 @@ export default function CustomerJobDetailPage({
         </div>
       )}
 
+      {job.status === "IN_PROGRESS" && job.reworkNote && (
+        <div className="flex gap-2 bg-amber-50 border border-amber-300 text-amber-800 rounded-md px-4 py-3 text-sm">
+          <AlertTriangle className="h-4 w-4 mt-0.5 shrink-0" />
+          <span>ช่างกำลังแก้ไขตามที่คุณแจ้ง: {job.reworkNote}</span>
+        </div>
+      )}
+
       {/* Job Details */}
       <Card>
         <CardHeader>
@@ -500,7 +558,28 @@ export default function CustomerJobDetailPage({
           {job.jobNote && (
             <div className="pt-2 border-t">
               <p className="text-muted-foreground text-xs mb-1">หมายเหตุ</p>
-              <p className="text-sm">{job.jobNote}</p>
+              <p className="text-sm whitespace-pre-line">{job.jobNote}</p>
+            </div>
+          )}
+
+          {job.parentJob && (
+            <div className="pt-2 border-t text-sm">
+              ใบงานรอบบำรุงประจำเดือนตามสัญญา{" "}
+              <Link href={`/jobs/${job.parentJob.id}`} className="text-primary hover:underline">
+                #{job.parentJob.id.slice(-8)}
+              </Link>
+            </div>
+          )}
+
+          {job.service && !job.parentJob && job.service.endServiceDate && (
+            <div className="pt-2 border-t text-sm flex items-start gap-2">
+              <CalendarClock className="h-4 w-4 mt-0.5 text-primary" />
+              <span>
+                สัญญาบำรุงรักษาถึง {thDate(job.service.endServiceDate)} ·{" "}
+                {job.service.nextServiceDate
+                  ? `รอบบำรุงครั้งถัดไป ${thDate(job.service.nextServiceDate)}`
+                  : "ไม่มีรอบบำรุงถัดไป"}
+              </span>
             </div>
           )}
         </CardContent>
@@ -589,6 +668,11 @@ export default function CustomerJobDetailPage({
                 บาท
               </span>
             </div>
+
+            <p className="text-xs text-muted-foreground text-right -mt-2">
+              ค่าอะไหล่/วัสดุ {expenseTotal.toLocaleString("th-TH", { minimumFractionDigits: 2 })} บาท + ค่าแรง{" "}
+              {parseFloat(job.jobWage).toLocaleString("th-TH", { minimumFractionDigits: 2 })} บาท
+            </p>
 
             <div className="flex items-center gap-2">
               <span className="text-muted-foreground text-sm">สถานะ:</span>
@@ -704,16 +788,25 @@ export default function CustomerJobDetailPage({
           </CardHeader>
           <CardContent className="space-y-4">
             <div className="space-y-2 text-sm">
-              <p className="font-medium">
-                วันที่: {new Date(job.workPlan.startDate).toLocaleDateString("th-TH")} {job.workPlan.endDate ? `ถึง ${new Date(job.workPlan.endDate).toLocaleDateString("th-TH")}` : ""}
-              </p>
+              <p className="font-medium">วันที่: {thDateRange(job.workPlan.startDate, job.workPlan.endDate)}</p>
               <p className="text-muted-foreground">สถานที่: {job.workPlan.location || job.jobAddress}</p>
+              {job.workPlan.technicians && job.workPlan.technicians.length > 0 && (
+                <p className="flex items-center gap-1 text-muted-foreground">
+                  <Users className="h-3.5 w-3.5" /> ทีมช่าง:{" "}
+                  {job.workPlan.technicians.map((t) => t.employee.employeeName).join(", ")}
+                </p>
+              )}
               <div className="flex items-center gap-2">
                 <span className="text-muted-foreground">สถานะแผน:</span>
-                <Badge variant={job.workPlan.status === "APPROVED" || job.status === "PLAN_APPROVED" ? "success" : "warning"}>
-                  {job.workPlan.status === "APPROVED" || job.status === "PLAN_APPROVED" ? "อนุมัติแล้ว" : "รออนุมัติแผน"}
+                <Badge variant={PLAN_STATUS_VARIANT[job.workPlan.status] ?? "outline"}>
+                  {PLAN_STATUS_LABEL[job.workPlan.status] ?? job.workPlan.status}
                 </Badge>
               </div>
+              {job.workPlan.status === "REJECTED" && job.workPlan.rejectNote && (
+                <p className="text-xs text-muted-foreground">
+                  คุณขอให้ปรับแผน: {job.workPlan.rejectNote} — รอหัวหน้าช่างส่งแผนใหม่
+                </p>
+              )}
 
               {job.workPlan.materials && job.workPlan.materials.length > 0 && (
                 <div className="pt-2 border-t">
@@ -730,21 +823,57 @@ export default function CustomerJobDetailPage({
               )}
             </div>
 
-            {/* Customer Approve Work Plan Button */}
-            {job.workPlan.status === "DRAFT" && (
-              <div className="pt-2 border-t flex justify-end">
-                <Button onClick={handleApproveWorkPlan} disabled={actionLoading} className="gap-2">
-                  {actionLoading && <Loader2 className="h-4 w-4 animate-spin" />}
-                  ✓ อนุมัติแผนการทำงาน
-                </Button>
+            {/* UC09 อนุมัติ / ขอให้ปรับแผน */}
+            {job.workPlan.status === "DRAFT" && job.status === "APPROVE" && (
+              <div className="pt-2 border-t space-y-3">
+                {!showPlanReject ? (
+                  <div className="flex justify-end gap-2">
+                    <Button variant="outline" onClick={() => setShowPlanReject(true)} disabled={actionLoading}>
+                      ✗ ขอให้ปรับแผน
+                    </Button>
+                    <Button onClick={() => handleWorkPlanAction("APPROVE")} disabled={actionLoading} className="gap-2">
+                      {actionLoading && <Loader2 className="h-4 w-4 animate-spin" />}
+                      ✓ อนุมัติแผนการทำงาน
+                    </Button>
+                  </div>
+                ) : (
+                  <div className="space-y-2">
+                    <Label htmlFor="planRejectNote">สิ่งที่ต้องการให้ปรับ (เช่น วันเวลา สถานที่)</Label>
+                    <Input
+                      id="planRejectNote"
+                      value={planRejectNote}
+                      onChange={(e) => setPlanRejectNote(e.target.value)}
+                      placeholder="เช่น ขอเลื่อนเป็นวันเสาร์ เนื่องจากวันธรรมดาอาคารเปิดใช้งาน"
+                    />
+                    <div className="flex justify-end gap-2">
+                      <Button variant="outline" onClick={() => setShowPlanReject(false)} disabled={actionLoading}>
+                        ยกเลิก
+                      </Button>
+                      <Button
+                        variant="destructive"
+                        onClick={() => handleWorkPlanAction("REJECT")}
+                        disabled={actionLoading || !planRejectNote.trim()}
+                      >
+                        ยืนยันขอให้ปรับแผน
+                      </Button>
+                    </div>
+                  </div>
+                )}
               </div>
             )}
           </CardContent>
         </Card>
       )}
 
+      {/* ใบแจ้งหนี้ร่างที่ระบบออกอัตโนมัติ ยังอยู่ระหว่างฝ่ายบัญชีตรวจสอบ */}
+      {job.invoicePendingReview && (
+        <div className="bg-blue-50 border border-blue-200 text-blue-700 rounded-md px-4 py-3 text-sm">
+          ระบบออกใบแจ้งหนี้ให้แล้ว อยู่ระหว่างฝ่ายบัญชีตรวจสอบความถูกต้อง จะแจ้งให้ชำระเงินเร็ว ๆ นี้
+        </div>
+      )}
+
       {/* Invoice / Payment Link */}
-      {["WAITING_ACCEPTANCE", "ACCEPTED", "PAID"].includes(job.status) && (
+      {job.receipt && ["ACCEPTED", "PAID", "COMPLETED"].includes(job.status) && (
         <Card>
           <CardContent className="pt-6">
             <div className="flex items-center justify-between">
@@ -762,30 +891,83 @@ export default function CustomerJobDetailPage({
         </Card>
       )}
 
-      {/* ตรวจรับงาน button */}
+      {/* ผลการทดสอบความปลอดภัยล่าสุด (UC13) */}
+      {job.safetyChecks?.length > 0 &&
+        ["WAITING_ACCEPTANCE", "ACCEPTED", "PAID", "COMPLETED"].includes(job.status) && (
+          <Card>
+            <CardHeader>
+              <CardTitle className="text-base flex items-center gap-2">
+                <ShieldCheck className="h-4 w-4 text-green-600" /> ผลการทดสอบความปลอดภัย
+              </CardTitle>
+              <CardDescription>
+                ทดสอบเมื่อ {thDate(job.safetyChecks[0].checkedAt)} โดย {job.safetyChecks[0].technician?.employeeName ?? "ช่าง"}
+                {job.safetyChecks.length > 1 && ` · ทดสอบทั้งหมด ${job.safetyChecks.length} รอบ`}
+              </CardDescription>
+            </CardHeader>
+            <CardContent>
+              <ul className="grid grid-cols-1 md:grid-cols-2 gap-1 text-sm">
+                {job.safetyChecks[0].items.map((i) => (
+                  <li key={i.key} className="flex items-center gap-2">
+                    {i.passed ? (
+                      <CheckCircle2 className="h-4 w-4 text-green-600 shrink-0" />
+                    ) : (
+                      <XCircle className="h-4 w-4 text-destructive shrink-0" />
+                    )}
+                    {i.label}
+                  </li>
+                ))}
+              </ul>
+              {job.safetyChecks[0].note && (
+                <p className="mt-2 text-xs text-muted-foreground">หมายเหตุช่าง: {job.safetyChecks[0].note}</p>
+              )}
+            </CardContent>
+          </Card>
+        )}
+
+      {/* UC14 ตรวจรับงาน — ผ่าน / ไม่ผ่าน */}
       {job.status === "WAITING_ACCEPTANCE" && (
-        <Card>
-          <CardContent className="pt-6">
-            <div className="flex items-center justify-between">
-              <div>
-                <p className="font-medium">ตรวจรับงาน</p>
-                <p className="text-sm text-muted-foreground">
-                  งานเสร็จสิ้นแล้ว กรุณาตรวจสอบและยืนยันการรับงาน
-                </p>
-              </div>
-              <Button
-                onClick={handleAcceptance}
-                disabled={actionLoading}
-                className="gap-2"
-              >
-                {actionLoading ? (
-                  <Loader2 className="h-4 w-4 animate-spin" />
-                ) : (
-                  <ClipboardCheck className="h-4 w-4" />
-                )}
-                ตรวจรับงาน
-              </Button>
+        <Card className="border-primary">
+          <CardContent className="pt-6 space-y-3">
+            <div>
+              <p className="font-medium">ตรวจรับงาน</p>
+              <p className="text-sm text-muted-foreground">
+                กรุณาตรวจสอบงานหน้างานจริง หากพบปัญหาให้กด &quot;ไม่ผ่าน&quot; และระบุสิ่งที่ต้องการให้แก้ไข
+              </p>
             </div>
+            {!showAcceptReject ? (
+              <div className="flex justify-end gap-2">
+                <Button variant="outline" onClick={() => setShowAcceptReject(true)} disabled={actionLoading}>
+                  ✗ ไม่ผ่าน ให้ช่างแก้ไข
+                </Button>
+                <Button onClick={() => handleAcceptance("ACCEPT")} disabled={actionLoading} className="gap-2">
+                  {actionLoading ? <Loader2 className="h-4 w-4 animate-spin" /> : <ClipboardCheck className="h-4 w-4" />}
+                  ตรวจรับงาน (ผ่าน)
+                </Button>
+              </div>
+            ) : (
+              <div className="space-y-2">
+                <Label htmlFor="acceptRejectNote">สิ่งที่พบ / ต้องการให้แก้ไข</Label>
+                <textarea
+                  id="acceptRejectNote"
+                  className="flex min-h-20 w-full rounded-md border border-input bg-background px-3 py-2 text-sm"
+                  value={acceptRejectNote}
+                  onChange={(e) => setAcceptRejectNote(e.target.value)}
+                  placeholder="เช่น ประตูชั้น 3 ปิดไม่สนิท มีเสียงดังขณะลิฟต์เคลื่อนที่"
+                />
+                <div className="flex justify-end gap-2">
+                  <Button variant="outline" onClick={() => setShowAcceptReject(false)} disabled={actionLoading}>
+                    ยกเลิก
+                  </Button>
+                  <Button
+                    variant="destructive"
+                    onClick={() => handleAcceptance("REJECT")}
+                    disabled={actionLoading || !acceptRejectNote.trim()}
+                  >
+                    ยืนยันส่งกลับให้ช่างแก้ไข
+                  </Button>
+                </div>
+              </div>
+            )}
           </CardContent>
         </Card>
       )}

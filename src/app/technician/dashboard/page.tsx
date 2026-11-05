@@ -2,6 +2,7 @@
 import Link from "next/link";
 import { Briefcase, ClipboardCheck, Package } from "lucide-react";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
+import { TechnicianTodayPanel } from "@/components/dashboard/widgets";
 
 export default function TechnicianDashboard() {
   return (
@@ -10,6 +11,8 @@ export default function TechnicianDashboard() {
         <h1 className="text-2xl font-bold tracking-tight">Dashboard</h1>
         <p className="text-muted-foreground">ยินดีต้อนรับ ช่าง / หัวหน้าช่าง</p>
       </div>
+
+      <TechnicianTodayPanel />
 
       <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
         <Link href="/technician/jobs">

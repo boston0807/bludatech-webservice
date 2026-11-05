@@ -55,3 +55,7 @@ next-env.d.ts
 *.mmd
 *.png
 
+
+# wrangler local secrets
+.dev.vars
+.wrangler/

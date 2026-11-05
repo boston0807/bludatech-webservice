@@ -6,7 +6,7 @@ import { useRouter } from "next/navigation";
 import { useForm, useFieldArray } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { z } from "zod";
-import { Loader2, Plus, Trash2, ClipboardCheck } from "lucide-react";
+import { Loader2, Plus, Trash2, ClipboardCheck, MapPin, PhoneCall } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -17,7 +17,9 @@ type Job = {
   id: string;
   jobType: string;
   jobAddress: string;
+  jobNote?: string | null;
   status: string;
+  expenses?: { expenseName: string; quantity: number; price: string }[];
   customer?: { customerName: string };
   installation?: { buildingFloor: number; elevatorBrand?: string; elevatorModel?: string };
   repair?: { elevatorModel?: string };
@@ -26,6 +28,7 @@ type Job = {
 
 const surveyFormSchema = z
   .object({
+    method: z.enum(["ONSITE", "REMOTE"]),
     note: z.string().optional(),
     noMaterials: z.boolean(),
     expenses: z.array(
@@ -37,6 +40,13 @@ const surveyFormSchema = z
     ),
   })
   .superRefine((data, ctx) => {
+    if (data.method === "REMOTE" && !data.note?.trim()) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        path: ["note"],
+        message: "การประเมินแบบไม่ลงพื้นที่ต้องระบุข้อมูลที่ใช้ประเมิน",
+      });
+    }
     if (!data.noMaterials && data.expenses.length === 0) {
       ctx.addIssue({
         code: z.ZodIssueCode.custom,
@@ -58,11 +68,12 @@ export default function SurveyPage({ params }: { params: Promise<{ id: string }>
 
   const { register, handleSubmit, control, watch, formState: { errors, isSubmitting } } = useForm<SurveyFormData>({
     resolver: zodResolver(surveyFormSchema),
-    defaultValues: { noMaterials: false, expenses: [{ expenseName: "", quantity: 1, price: 0 }] },
+    defaultValues: { method: "ONSITE", noMaterials: false, expenses: [{ expenseName: "", quantity: 1, price: 0 }] },
   });
 
   const { fields, append, remove, replace } = useFieldArray({ control, name: "expenses" });
   const noMaterials = watch("noMaterials");
+  const method = watch("method");
 
   const noMaterialsField = register("noMaterials", {
     onChange: (e) => {
@@ -74,38 +85,37 @@ export default function SurveyPage({ params }: { params: Promise<{ id: string }>
   useEffect(() => {
     fetch(`/api/jobs/${id}`)
       .then((r) => r.json())
-      .then((d) => { if (d.success) setJob(d.data); })
+      .then((d) => {
+        if (!d.success) return;
+        setJob(d.data);
+        // สำรวจใหม่หลังลูกค้าขอแก้ไข → ดึงรายการประเมินเดิมมาให้แก้ต่อ
+        if (d.data.status === "REQUEST_EDIT" && d.data.expenses?.length) {
+          replace(
+            d.data.expenses.map((e: { expenseName: string; quantity: number; price: string }) => ({
+              expenseName: e.expenseName,
+              quantity: e.quantity,
+              price: Number(e.price),
+            }))
+          );
+        }
+      })
       .finally(() => setLoading(false));
-  }, [id]);
+  }, [id, replace]);
 
   const onSubmit = async (data: SurveyFormData) => {
     setServerError(null);
     try {
-      // 1. บันทึก survey
+      // บันทึกผลสำรวจและรายการอะไหล่ในครั้งเดียว (UC05) — ถ้าพังจะไม่บันทึกอะไรเลย
+      const validExpenses = data.noMaterials ? [] : data.expenses.filter((e) => e.expenseName.trim());
       const surveyRes = await fetch(`/api/jobs/${id}/survey`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ note: data.note }),
+        body: JSON.stringify({ method: data.method, note: data.note, expenses: validExpenses }),
       });
       if (!surveyRes.ok) {
         const e = await surveyRes.json();
         setServerError(e.message ?? "บันทึกการสำรวจไม่สำเร็จ");
         return;
-      }
-
-      // 2. บันทึก expenses (ถ้ามี)
-      const validExpenses = data.noMaterials ? [] : data.expenses.filter((e) => e.expenseName.trim());
-      if (validExpenses.length > 0) {
-        const expRes = await fetch(`/api/jobs/${id}/expenses`, {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ expenses: validExpenses }),
-        });
-        if (!expRes.ok) {
-          const e = await expRes.json();
-          setServerError(e.message ?? "บันทึกรายการค่าใช้จ่ายไม่สำเร็จ");
-          return;
-        }
       }
 
       setSuccess(true);
@@ -147,6 +157,48 @@ export default function SurveyPage({ params }: { params: Promise<{ id: string }>
       )}
 
       <form onSubmit={handleSubmit(onSubmit)} className="space-y-5">
+        {/* วิธีประเมิน — ลดการลงพื้นที่ที่ไม่จำเป็น (ปัญหา BP ข้อ 2) */}
+        <Card>
+          <CardHeader>
+            <CardTitle className="text-base">วิธีประเมินหน้างาน</CardTitle>
+            <CardDescription>
+              งานซ่อม/บำรุงที่ลูกค้าแจ้งอาการชัดเจน ประเมินจากข้อมูลได้โดยไม่ต้องเดินทาง ช่วยประหยัดเวลาและค่าเดินทางของช่าง
+            </CardDescription>
+          </CardHeader>
+          <CardContent className="space-y-3">
+            {job.jobNote && (
+              <div className="rounded-md bg-muted px-3 py-2 text-sm">
+                <span className="text-muted-foreground">ข้อมูลที่ลูกค้าแจ้ง: </span>
+                {job.jobNote}
+              </div>
+            )}
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-2">
+              <label className={`flex items-start gap-3 rounded-md border px-3 py-2 text-sm cursor-pointer ${method === "ONSITE" ? "border-primary bg-primary/5" : ""}`}>
+                <input type="radio" value="ONSITE" className="mt-1 accent-primary" disabled={alreadySurveyed} {...register("method")} />
+                <span>
+                  <span className="font-medium flex items-center gap-1"><MapPin className="h-4 w-4" /> ลงพื้นที่สำรวจ</span>
+                  <span className="text-xs text-muted-foreground">วัดขนาด ตรวจสภาพจริงที่หน้างาน</span>
+                </span>
+              </label>
+              <label className={`flex items-start gap-3 rounded-md border px-3 py-2 text-sm ${job.jobType === "INSTALLATION" ? "opacity-50 cursor-not-allowed" : "cursor-pointer"} ${method === "REMOTE" ? "border-primary bg-primary/5" : ""}`}>
+                <input
+                  type="radio"
+                  value="REMOTE"
+                  className="mt-1 accent-primary"
+                  disabled={alreadySurveyed || job.jobType === "INSTALLATION"}
+                  {...register("method")}
+                />
+                <span>
+                  <span className="font-medium flex items-center gap-1"><PhoneCall className="h-4 w-4" /> ประเมินโดยไม่ลงพื้นที่</span>
+                  <span className="text-xs text-muted-foreground">
+                    {job.jobType === "INSTALLATION" ? "งานติดตั้งต้องลงพื้นที่เสมอ" : "จากอาการที่ลูกค้าแจ้ง โทรสอบถาม หรือประวัติการซ่อม"}
+                  </span>
+                </span>
+              </label>
+            </div>
+          </CardContent>
+        </Card>
+
         {/* หมายเหตุการสำรวจ */}
         <Card>
           <CardHeader>
@@ -155,7 +207,7 @@ export default function SurveyPage({ params }: { params: Promise<{ id: string }>
           </CardHeader>
           <CardContent>
             <div className="space-y-2">
-              <Label htmlFor="note">บันทึกการสำรวจ</Label>
+              <Label htmlFor="note">{method === "REMOTE" ? "ข้อมูลที่ใช้ประเมิน (จำเป็น)" : "บันทึกการสำรวจ"}</Label>
               <textarea
                 id="note"
                 className="flex min-h-24 w-full rounded-md border border-input bg-background px-3 py-2 text-sm placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring disabled:opacity-50"
@@ -163,6 +215,7 @@ export default function SurveyPage({ params }: { params: Promise<{ id: string }>
                 disabled={alreadySurveyed}
                 {...register("note")}
               />
+              {errors.note && <p className="text-destructive text-xs">{errors.note.message}</p>}
             </div>
           </CardContent>
         </Card>

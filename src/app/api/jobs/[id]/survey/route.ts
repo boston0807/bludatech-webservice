@@ -1,50 +1,69 @@
 // src/app/api/jobs/[id]/survey/route.ts
+// UC05 สำรวจและประเมินหน้างาน — บันทึกผลสำรวจ + รายการอะไหล่ในครั้งเดียว (rollback ทั้งหมดถ้าพัง)
 import { NextRequest } from "next/server";
 import { prisma } from "@/lib/prisma";
-import { verifyToken, AUTH_COOKIE_NAME } from "@/lib/auth";
-import { successResponse, errorResponse, unauthorizedResponse, forbiddenResponse, notFoundResponse } from "@/lib/api-response";
+import { getAuth } from "@/lib/api-auth";
+import {
+  ApiError,
+  successResponse,
+  errorResponse,
+  unauthorizedResponse,
+  forbiddenResponse,
+  notFoundResponse,
+} from "@/lib/api-response";
 import { createSurveySchema } from "@/lib/validations/survey";
 
 type Params = { params: Promise<{ id: string }> };
 
 export async function POST(req: NextRequest, { params }: Params) {
-  const token = req.cookies.get(AUTH_COOKIE_NAME)?.value;
-  if (!token) return unauthorizedResponse();
-  const payload = await verifyToken(token);
-  if (!payload || !["HEAD_TECHNICIAN", "TECHNICIAN"].includes(payload.role)) return forbiddenResponse();
+  const auth = await getAuth(req);
+  if (!auth) return unauthorizedResponse();
+  if (!["HEAD_TECHNICIAN", "TECHNICIAN"].includes(auth.role)) return forbiddenResponse();
 
   const { id: jobId } = await params;
-
   const job = await prisma.job.findUnique({ where: { id: jobId } });
   if (!job) return notFoundResponse("ไม่พบใบงาน");
   if (job.status !== "PENDING" && job.status !== "REQUEST_EDIT") {
     return errorResponse("ใบงานนี้ไม่อยู่ในสถานะที่บันทึกการสำรวจได้", 422);
   }
 
-  const body = await req.json();
+  const body = await req.json().catch(() => ({}));
   const parsed = createSurveySchema.safeParse({ ...body, jobId });
   if (!parsed.success) {
-    return errorResponse("ข้อมูลไม่ถูกต้อง", 422, parsed.error.flatten().fieldErrors);
+    return errorResponse(parsed.error.errors[0].message, 422, parsed.error.flatten().fieldErrors);
+  }
+  const { method, note, expenses } = parsed.data;
+
+  // งานติดตั้งต้องวัดขนาดบ่อลิฟต์/โครงสร้างจริง จึงต้องลงพื้นที่เสมอ
+  if (method === "REMOTE" && job.jobType === "INSTALLATION") {
+    return errorResponse("งานติดตั้งลิฟต์ต้องลงพื้นที่สำรวจหน้างานเสมอ", 422);
   }
 
   try {
-    // สร้าง survey
-    const survey = await prisma.survey.create({
-      data: {
-        jobId,
-        technicianId: payload.sub,
-        note: parsed.data.note ?? null,
-      },
-    });
+    const survey = await prisma.$transaction(async (tx) => {
+      const moved = await tx.job.updateMany({
+        where: { id: jobId, status: { in: ["PENDING", "REQUEST_EDIT"] } },
+        data: { status: "PASS_SURVEY" },
+      });
+      if (moved.count === 0) throw new ApiError("ใบงานนี้ไม่อยู่ในสถานะที่บันทึกการสำรวจได้", 422);
 
-    // อัปเดต job status → PASS_SURVEY
-    await prisma.job.update({
-      where: { id: jobId },
-      data: { status: "PASS_SURVEY" },
+      const created = await tx.survey.create({
+        data: { jobId, technicianId: auth.sub, method, note: note?.trim() || null },
+      });
+
+      if (expenses?.length) {
+        // สำรวจใหม่หลังลูกค้าขอแก้ไข (REQUEST_EDIT) → รายการประเมินใหม่แทนที่รายการเดิมทั้งหมด
+        if (job.status === "REQUEST_EDIT") await tx.expense.deleteMany({ where: { jobId } });
+        await tx.expense.createMany({
+          data: expenses.map((e) => ({ jobId, expenseName: e.expenseName, quantity: e.quantity, price: e.price })),
+        });
+      }
+      return created;
     });
 
     return successResponse(survey, 201);
   } catch (error) {
+    if (error instanceof ApiError) return errorResponse(error.message, error.status);
     console.error("[CREATE_SURVEY_ERROR]", error);
     return errorResponse("เกิดข้อผิดพลาดในการบันทึกข้อมูล", 500);
   }

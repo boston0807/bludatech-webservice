@@ -33,6 +33,9 @@ export async function GET(req: NextRequest, { params }: Params) {
   if (payload.role === "CUSTOMER" && receipt.job.customerId !== payload.sub) {
     return forbiddenResponse("คุณไม่มีสิทธิ์ดูใบแจ้งหนี้นี้");
   }
+  if (payload.role === "CUSTOMER" && receipt.status === "DRAFT") {
+    return notFoundResponse("ใบแจ้งหนี้อยู่ระหว่างการตรวจสอบโดยฝ่ายบัญชี");
+  }
 
   if (payload.role !== "ADMIN" && payload.role !== "ACCOUNTANT" && payload.role !== "CUSTOMER") {
     return forbiddenResponse("คุณไม่มีสิทธิ์ดูข้อมูลใบแจ้งหนี้");

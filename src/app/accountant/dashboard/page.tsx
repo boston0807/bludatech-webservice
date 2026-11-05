@@ -2,6 +2,7 @@
 import Link from "next/link";
 import { FileText, ShoppingCart, Receipt } from "lucide-react";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
+import { AccountantAlerts } from "@/components/dashboard/widgets";
 
 export default function AccountantDashboard() {
   return (
@@ -10,6 +11,8 @@ export default function AccountantDashboard() {
         <h1 className="text-2xl font-bold tracking-tight">Dashboard</h1>
         <p className="text-muted-foreground">ยินดีต้อนรับ พนักงานบัญชี</p>
       </div>
+
+      <AccountantAlerts />
 
       <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
         <Link href="/accountant/quotations">

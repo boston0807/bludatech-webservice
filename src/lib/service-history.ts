@@ -1,7 +1,14 @@
 import { Prisma } from "@prisma/client";
 import { ApiError } from "@/lib/api-response";
+import { addMonths } from "@/lib/dates";
 
 type HistoryDetails = { summary?: string | null; technicianNames?: string | null };
+
+// สัญญาบำรุงรักษา: อายุสัญญา 2 ปี และเข้าบำรุงทุก 1 เดือน (BP ข้อ 19)
+export const SERVICE_CONTRACT_YEARS = 2;
+export const SERVICE_INTERVAL_MONTHS = 1;
+// แจ้งเตือนล่วงหน้ากี่วัน และธุรการสร้างใบงานรอบถัดไปได้เมื่อเหลือไม่เกินกี่วัน
+export const SERVICE_REMINDER_DAYS = 14;
 
 export async function saveJobHistory(
   tx: Prisma.TransactionClient,
@@ -10,7 +17,11 @@ export async function saveJobHistory(
 ) {
   const job = await tx.job.findUnique({
     where: { id: jobId },
-    include: { quotation: true },
+    include: {
+      quotation: true,
+      service: true,
+      workPlan: { include: { technicians: { include: { employee: { select: { employeeName: true } } } } } },
+    },
   });
 
   if (!job) throw new Error("ไม่พบใบงาน");
@@ -25,6 +36,8 @@ export async function saveJobHistory(
   }
 
   const completedDate = new Date();
+  // ถ้าธุรการไม่กรอกชื่อช่าง ใช้รายชื่อช่างที่ได้รับมอบหมายในแผนงาน
+  const assignedNames = job.workPlan?.technicians.map((t) => t.employee.employeeName).join(", ");
 
   const history = await tx.serviceHistory.create({
     data: {
@@ -33,19 +46,21 @@ export async function saveJobHistory(
       jobType: job.jobType,
       completedDate,
       totalCost: job.quotation?.totalAmount || job.jobWage,
-      technicianNames: details.technicianNames?.trim() || "ทีมช่างผู้ปฏิบัติงาน",
+      technicianNames: details.technicianNames?.trim() || assignedNames || "ทีมช่างผู้ปฏิบัติงาน",
       summary: details.summary?.trim() || job.jobNote || "บริการเสร็จสิ้นสมบูรณ์",
     },
   });
 
-  if (job.jobType === "SERVICE") {
-    const endServiceDate = new Date(completedDate);
-    endServiceDate.setFullYear(endServiceDate.getFullYear() + 2);
-
-    await tx.jobService.update({
-      where: { jobId },
-      data: { endServiceDate },
-    });
+  if (job.jobType === "SERVICE" && job.service) {
+    if (!job.parentJobId) {
+      // ใบงานแรกของสัญญาบำรุง → เริ่มนับอายุสัญญา และตั้งรอบบำรุงครั้งถัดไป
+      const endServiceDate = addMonths(completedDate, SERVICE_CONTRACT_YEARS * 12);
+      await tx.jobService.update({
+        where: { jobId },
+        data: { endServiceDate, nextServiceDate: addMonths(completedDate, SERVICE_INTERVAL_MONTHS) },
+      });
+    }
+    // ใบงานรอบบำรุง (มี parentJobId) ไม่ต่ออายุสัญญา — รอบถัดไปถูกเลื่อนไปแล้วตอนสร้างใบงานรอบนี้
   }
 
   return history;

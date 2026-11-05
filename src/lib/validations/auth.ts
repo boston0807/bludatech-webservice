@@ -44,5 +44,19 @@ export const registerSchema = z
     path: ["confirmPassword"],
   });
 
+// ลูกค้าที่ถูกปฏิเสธแก้ไขข้อมูลแล้วส่งใหม่ (ยืนยันตัวตนด้วย username + รหัสผ่านเดิม)
+export const resubmitSchema = z.object({
+  username: z.string().min(1, "กรุณากรอก Username"),
+  password: z.string().min(1, "กรุณากรอกรหัสผ่าน"),
+  customerName: z.string().min(1, "กรุณากรอกชื่อ-นามสกุล").max(100, "ชื่อยาวเกินไป"),
+  customerAddress: z.string().min(1, "กรุณากรอกที่อยู่"),
+  customerPhone: z
+    .string()
+    .regex(/^0[689]\d{8}$/, "เบอร์โทรต้องเป็น 10 หลัก ขึ้นต้นด้วย 06, 08 หรือ 09"),
+  customerEmail: z.string().email("รูปแบบอีเมลไม่ถูกต้อง").optional().or(z.literal("")),
+  taxId: z.string().max(20, "รหัสผู้เสียภาษียาวเกินไป").optional().or(z.literal("")),
+});
+
 export type LoginInput = z.infer<typeof loginSchema>;
+export type ResubmitInput = z.infer<typeof resubmitSchema>;
 export type RegisterInput = z.infer<typeof registerSchema>;
