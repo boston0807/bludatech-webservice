@@ -16,9 +16,6 @@ import {
 import { sendWaitingAcceptanceEmail } from "@/lib/email";
 import { parseSafetyItems, SAFETY_CHECKLIST } from "@/lib/safety-checklist";
 import { canWorkOnPlan } from "@/lib/work-schedule";
-import { transitionJob } from "@/lib/job-status";
-import { Notify } from "@/lib/notifications";
-import { linkAttachments, parseAttachmentIds } from "@/lib/attachments";
 
 type Params = { params: Promise<{ id: string }> };
 
@@ -75,23 +72,17 @@ export async function POST(req: NextRequest, { params }: Params) {
         data: { jobId: id, technicianId, passed: parsed.passed, items: parsed.items, note },
       });
 
-      await linkAttachments(tx, {
-        ids: parseAttachmentIds(body?.attachmentIds),
-        jobId: id,
-        category: "SAFETY_CHECK",
-        auth,
-        link: { safetyCheckId: check.id },
-      });
-
       if (parsed.passed) {
-        await transitionJob(tx, { jobId: id, to: "WAITING_ACCEPTANCE", role: auth.role });
+        const moved = await tx.job.updateMany({
+          where: { id, status: "IN_PROGRESS" },
+          data: { status: "WAITING_ACCEPTANCE" },
+        });
+        if (moved.count === 0) throw new ApiError("สถานะใบงานเปลี่ยนไปแล้ว กรุณาโหลดหน้าใหม่", 409);
       }
 
       const updatedJob = await tx.job.findUnique({ where: { id } });
       return { job: updatedJob, check };
     });
-
-    if (parsed.passed) await Notify.waitingAcceptance({ jobId: id, customerId: job.customerId });
 
     if (parsed.passed && job.customer.customerEmail) {
       sendWaitingAcceptanceEmail({

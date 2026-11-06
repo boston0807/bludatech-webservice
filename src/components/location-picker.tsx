@@ -38,6 +38,7 @@ async function geocode(q: string, limit: number): Promise<SearchResult[]> {
   const res = await fetch(
     `${NOMINATIM}/search?format=jsonv2&limit=${limit}&countrycodes=th&accept-language=th&q=${encodeURIComponent(q)}`
   );
+  if (!res.ok) throw new Error(`geocode ${res.status}`);
   return res.json();
 }
 
@@ -81,6 +82,7 @@ export function LocationPicker({ value, onChange, label = "สถานที่
         `${NOMINATIM}/reverse?format=jsonv2&lat=${lat}&lon=${lng}&zoom=18&addressdetails=0&accept-language=th`,
         { signal: ctrl.signal }
       );
+      if (!res.ok) throw new Error(`reverse ${res.status}`);
       const d = await res.json();
       if (d?.display_name) onChangeRef.current(cleanAddress(d.display_name));
       else setNotice("ไม่พบชื่อที่อยู่ของจุดนี้ กรุณาพิมพ์ที่อยู่เพิ่มเติมในช่องด้านล่าง");

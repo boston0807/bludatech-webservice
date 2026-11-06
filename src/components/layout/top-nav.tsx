@@ -5,7 +5,6 @@ import { useRouter } from "next/navigation";
 import { LogOut, User } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
-import { NotificationBell } from "@/components/layout/notification-bell";
 
 type Role = "CUSTOMER" | "ADMIN" | "ACCOUNTANT" | "TECHNICIAN" | "HEAD_TECHNICIAN";
 
@@ -40,10 +39,9 @@ export function TopNav({ user }: Props) {
   const role = user.role as Role;
 
   return (
-    <header className="h-14 border-b bg-white flex items-center justify-between px-6 shrink-0">
+    <header className="h-14 border-b bg-white flex items-center justify-between px-6 shrink-0 print:hidden">
       <div />
       <div className="flex items-center gap-3">
-        <NotificationBell />
         <div className="flex items-center gap-2 text-sm">
           <User className="h-4 w-4 text-muted-foreground" />
           <span className="font-medium">{user.name}</span>

@@ -8,9 +8,10 @@ import { Loader2, ChevronLeft, FileText, CheckCircle2, CreditCard } from "lucide
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
+import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { AttachmentThumb, AttachmentUploader } from "@/components/attachments";
-import type { AttachmentInfo } from "@/lib/upload-client";
+import { PrintableDocument, PrintButton } from "@/components/documents/printable-document";
+import { isHttpUrl } from "@/lib/validations/payment";
 
 type Payment = {
   id: string;
@@ -18,8 +19,6 @@ type Payment = {
   amount: string;
   paymentMethod: string;
   verified: boolean;
-  slipUrl?: string | null;
-  attachments?: Pick<AttachmentInfo, "id" | "fileName" | "mimeType">[];
 };
 
 type Receipt = {
@@ -33,8 +32,16 @@ type Receipt = {
   job?: {
     jobType?: string;
     jobAddress?: string;
-    customer?: { customerName?: string; customerPhone?: string; customerAddress?: string };
+    jobWage?: string;
+    customer?: {
+      customerName?: string;
+      customerPhone?: string;
+      customerAddress?: string;
+      customerEmail?: string | null;
+      taxId?: string | null;
+    };
     quotation?: { totalAmount?: string };
+    expenses?: { expenseName: string; quantity: number; price: string }[];
   };
 };
 
@@ -54,7 +61,7 @@ export default function CustomerInvoicePage({ params }: { params: Promise<{ id: 
 
   // Payment form states
   const [paymentMethod, setPaymentMethod] = useState<"TRANSFER" | "CASH" | "CREDIT_CARD">("TRANSFER");
-  const [slips, setSlips] = useState<AttachmentInfo[]>([]);
+  const [slipUrl, setSlipUrl] = useState("");
   const [submitting, setSubmitting] = useState(false);
   const [successMsg, setSuccessMsg] = useState<string | null>(null);
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
@@ -78,8 +85,8 @@ export default function CustomerInvoicePage({ params }: { params: Promise<{ id: 
   const handlePayment = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!receipt) return;
-    if (paymentMethod === "TRANSFER" && slips.length === 0) {
-      setErrorMsg("กรุณาแนบสลิปการโอนเงิน");
+    if (slipUrl.trim() && !isHttpUrl(slipUrl.trim())) {
+      setErrorMsg("ลิงก์สลิปต้องขึ้นต้นด้วย http:// หรือ https://");
       return;
     }
 
@@ -94,7 +101,7 @@ export default function CustomerInvoicePage({ params }: { params: Promise<{ id: 
         body: JSON.stringify({
           amount: parseFloat(receipt.totalAmount),
           paymentMethod,
-          attachmentIds: slips.map((s) => s.id),
+          slipUrl: slipUrl.trim() || undefined,
         }),
       });
       const data = await res.json();
@@ -103,7 +110,6 @@ export default function CustomerInvoicePage({ params }: { params: Promise<{ id: 
         return;
       }
       setSuccessMsg("ชำระเงินสำเร็จเรียบร้อย");
-      setSlips([]);
       fetchReceipt();
     } catch {
       setErrorMsg("เกิดข้อผิดพลาดในการชำระเงิน");
@@ -131,15 +137,43 @@ export default function CustomerInvoicePage({ params }: { params: Promise<{ id: 
     );
   }
 
+  const paid = receipt.status === "PAID";
+
   return (
-    <div className="max-w-2xl mx-auto space-y-6">
+    <>
+    <PrintableDocument
+      kind={paid ? "RECEIPT" : "INVOICE"}
+      docNo={`${paid ? "RC" : "INV"}-${receipt.id.slice(0, 10).toUpperCase()}`}
+      issuedAt={paid && receipt.payments[0] ? receipt.payments[0].paymentDate : receipt.createdAt}
+      jobId={receipt.jobId}
+      jobType={receipt.job?.jobType ?? ""}
+      jobAddress={receipt.job?.jobAddress ?? "-"}
+      customer={{
+        customerName: receipt.job?.customer?.customerName ?? "-",
+        customerAddress: receipt.job?.customer?.customerAddress,
+        customerPhone: receipt.job?.customer?.customerPhone,
+        customerEmail: receipt.job?.customer?.customerEmail,
+        taxId: receipt.job?.customer?.taxId,
+      }}
+      expenses={receipt.job?.expenses ?? []}
+      jobWage={receipt.job?.jobWage ?? 0}
+      totalAmount={receipt.totalAmount}
+      payments={receipt.payments}
+      issuedBy={receipt.employee?.employeeName}
+    />
+    <div className="max-w-2xl mx-auto space-y-6 print:hidden">
       <div>
         <Link href={`/jobs/${jobId}`} className="inline-flex items-center text-sm text-muted-foreground hover:text-foreground mb-3">
           <ChevronLeft className="h-4 w-4" />
           กลับไปหน้าใบงาน
         </Link>
-        <h1 className="text-2xl font-bold tracking-tight">ใบแจ้งหนี้ / ใบเสร็จรับเงิน</h1>
-        <p className="text-muted-foreground text-sm">รายละเอียดการชำระเงินค่าบริการลิฟต์</p>
+        <div className="flex items-start justify-between gap-3">
+          <div>
+            <h1 className="text-2xl font-bold tracking-tight">ใบแจ้งหนี้ / ใบเสร็จรับเงิน</h1>
+            <p className="text-muted-foreground text-sm">รายละเอียดการชำระเงินค่าบริการลิฟต์</p>
+          </div>
+          <PrintButton label={paid ? "พิมพ์ใบเสร็จ" : "พิมพ์ใบแจ้งหนี้"} />
+        </div>
       </div>
 
       {successMsg && (
@@ -189,18 +223,9 @@ export default function CustomerInvoicePage({ params }: { params: Promise<{ id: 
                 <CheckCircle2 className="h-4 w-4 text-green-600" /> ชำระเงินเรียบร้อยแล้ว
               </p>
               {receipt.payments.map((p) => (
-                <div key={p.id} className="space-y-1.5">
-                  <p className="text-xs">
-                    ชำระเมื่อ: {new Date(p.paymentDate).toLocaleString("th-TH")} | วิธี: {p.paymentMethod} | จำนวน: {parseFloat(p.amount).toLocaleString("th-TH", { minimumFractionDigits: 2 })} บาท
-                  </p>
-                  {p.attachments && p.attachments.length > 0 && (
-                    <div className="flex flex-wrap gap-2">
-                      {p.attachments.map((a) => (
-                        <AttachmentThumb key={a.id} attachment={a} size="sm" />
-                      ))}
-                    </div>
-                  )}
-                </div>
+                <p key={p.id} className="text-xs">
+                  ชำระเมื่อ: {new Date(p.paymentDate).toLocaleString("th-TH")} | วิธี: {p.paymentMethod} | จำนวน: {parseFloat(p.amount).toLocaleString("th-TH", { minimumFractionDigits: 2 })} บาท
+                </p>
               ))}
             </div>
           )}
@@ -232,17 +257,13 @@ export default function CustomerInvoicePage({ params }: { params: Promise<{ id: 
               </div>
 
               <div className="space-y-2">
-                <Label>
-                  หลักฐานการชำระเงิน{paymentMethod === "TRANSFER" ? " (จำเป็น)" : " (ถ้ามี)"}
-                </Label>
-                <AttachmentUploader
-                  jobId={jobId}
-                  category="PAYMENT_SLIP"
-                  value={slips}
-                  onChange={setSlips}
-                  max={3}
-                  disabled={submitting}
-                  label="แนบสลิป (รูปหรือ PDF)"
+                <Label htmlFor="slipUrl">ลิงก์หลักฐานการโอนเงิน (ไม่บังคับ)</Label>
+                <Input
+                  id="slipUrl"
+                  type="url"
+                  placeholder="เช่น https://drive.google.com/…/slip.jpg"
+                  value={slipUrl}
+                  onChange={(e) => setSlipUrl(e.target.value)}
                 />
               </div>
 
@@ -255,5 +276,6 @@ export default function CustomerInvoicePage({ params }: { params: Promise<{ id: 
         </Card>
       )}
     </div>
+    </>
   );
 }

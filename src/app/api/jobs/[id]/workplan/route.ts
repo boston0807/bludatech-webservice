@@ -11,9 +11,7 @@ import {
   notFoundResponse,
 } from "@/lib/api-response";
 import { createWorkPlanSchema } from "@/lib/validations/workplan";
-import { NOT_ELEVATOR } from "@/lib/elevator-catalog";
 import { sendWorkPlanCreatedEmail } from "@/lib/email";
-import { Notify } from "@/lib/notifications";
 import { findScheduleConflicts, describeConflicts } from "@/lib/work-schedule";
 
 type Params = { params: Promise<{ id: string }> };
@@ -23,8 +21,9 @@ type Params = { params: Promise<{ id: string }> };
 export async function POST(req: NextRequest, { params }: Params) {
   const auth = await getAuth(req);
   if (!auth) return unauthorizedResponse();
-  if (auth.role !== "HEAD_TECHNICIAN" && auth.role !== "TECHNICIAN" && auth.role !== "ADMIN") {
-    return forbiddenResponse("เฉพาะหัวหน้าช่างหรือช่างที่สามารถทำแผนงานได้");
+  // UC08 actor = หัวหน้าช่าง (ธุรการทำแทนได้) — ช่างทั่วไปไม่มีสิทธิ์จัดแผน/มอบหมายงาน
+  if (auth.role !== "HEAD_TECHNICIAN" && auth.role !== "ADMIN") {
+    return forbiddenResponse("เฉพาะหัวหน้าช่างที่สามารถทำแผนงานและมอบหมายช่างได้");
   }
 
   const { id: jobId } = await params;
@@ -55,9 +54,7 @@ export async function POST(req: NextRequest, { params }: Params) {
   }
 
   if (materials?.length) {
-    const found = await prisma.material.count({
-      where: { id: { in: materials.map((m) => m.materialId) }, ...NOT_ELEVATOR },
-    });
+    const found = await prisma.material.count({ where: { id: { in: materials.map((m) => m.materialId) } } });
     if (found !== materials.length) return errorResponse("พบรายการอะไหล่ที่ไม่มีในระบบ", 422);
   }
 
@@ -125,8 +122,6 @@ export async function POST(req: NextRequest, { params }: Params) {
         endDate: workPlan.endDate,
       });
     }
-
-    await Notify.workPlanCreated({ jobId, customerId: job.customerId });
 
     return successResponse(fullPlan, "สร้างแผนงาน มอบหมายช่าง และจองอุปกรณ์สำเร็จ");
   } catch (error) {

@@ -21,10 +21,8 @@ import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/com
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { LocationPicker } from "@/components/location-picker";
-import { AttachmentGallery, AttachmentUploader } from "@/components/attachments";
-import type { AttachmentCategory, AttachmentInfo } from "@/lib/upload-client";
 import { SAFETY_CHECKLIST } from "@/lib/safety-checklist";
+import { LocationPicker } from "@/components/location-picker";
 import {
   JOB_TYPE_LABEL,
   JOB_STATUS_LABEL,
@@ -76,14 +74,6 @@ const JOB_TYPE_ICON = { INSTALLATION: Building2, REPAIR: Wrench, SERVICE: Settin
 
 type SafetyAnswer = { passed: boolean | null; remark: string };
 
-// หมวดรูปที่ช่างเพิ่มได้ในแต่ละขั้น (ตรงกับกฎฝั่ง server ใน src/lib/attachments.ts)
-function workPhotoCategories(status: string): AttachmentCategory[] {
-  if (status === "PLAN_APPROVED") return ["WORK_BEFORE"];
-  if (status === "IN_PROGRESS") return ["WORK_BEFORE", "WORK_AFTER"];
-  if (status === "WAITING_ACCEPTANCE") return ["WORK_AFTER"];
-  return [];
-}
-
 export default function TechnicianWorkplansPage() {
   const [jobs, setJobs] = useState<Job[]>([]);
   const [materials, setMaterials] = useState<Material[]>([]);
@@ -109,7 +99,6 @@ export default function TechnicianWorkplansPage() {
   const [safetyJob, setSafetyJob] = useState<Job | null>(null);
   const [answers, setAnswers] = useState<Record<string, SafetyAnswer>>({});
   const [safetyNote, setSafetyNote] = useState("");
-  const [safetyPhotos, setSafetyPhotos] = useState<AttachmentInfo[]>([]);
 
   const loadData = useCallback(() => {
     setLoading(true);
@@ -177,7 +166,6 @@ export default function TechnicianWorkplansPage() {
     for (const item of SAFETY_CHECKLIST) init[item.key] = { passed: null, remark: "" };
     setAnswers(init);
     setSafetyNote("");
-    setSafetyPhotos([]);
   };
 
   const toggleTech = (id: string) =>
@@ -263,7 +251,6 @@ export default function TechnicianWorkplansPage() {
             remark: answers[i.key].remark || undefined,
           })),
           note: safetyNote || undefined,
-          attachmentIds: safetyPhotos.map((p) => p.id),
         }),
       },
       (d) => {
@@ -328,6 +315,7 @@ export default function TechnicianWorkplansPage() {
               </div>
             </div>
 
+            {/* สถานที่ — เต็มความกว้างเพื่อให้แผนที่ใช้งานสะดวก (ค่าเริ่มต้น = ที่อยู่ในใบงาน) */}
             <LocationPicker key={planJob.id} label="สถานที่ปฏิบัติงาน" value={location} onChange={setLocation} />
 
             {/* มอบหมายช่าง */}
@@ -502,16 +490,6 @@ export default function TechnicianWorkplansPage() {
               })}
             </div>
             <div className="space-y-2">
-              <Label>รูปถ่ายประกอบผลทดสอบ</Label>
-              <AttachmentUploader
-                jobId={safetyJob.id}
-                category="SAFETY_CHECK"
-                value={safetyPhotos}
-                onChange={setSafetyPhotos}
-                disabled={actionLoading}
-              />
-            </div>
-            <div className="space-y-2">
               <Label htmlFor="safetyNote">หมายเหตุเพิ่มเติม</Label>
               <textarea
                 id="safetyNote"
@@ -558,7 +536,11 @@ export default function TechnicianWorkplansPage() {
             const Icon = JOB_TYPE_ICON[job.jobType];
             const plan = job.workPlan;
             const lastCheck = job.safetyChecks?.[0];
-            const canEditPlan = job.status === "APPROVE" && (!plan || plan.status === "DRAFT" || plan.status === "REJECTED");
+            // UC08 — เฉพาะหัวหน้าช่างจัดทำ/แก้ไขแผนงาน
+            const canEditPlan =
+              me?.role === "HEAD_TECHNICIAN" &&
+              job.status === "APPROVE" &&
+              (!plan || plan.status === "DRAFT" || plan.status === "REJECTED");
             const planShortages = plan?.materials.filter((m) => shortageById.has(m.materialId)) ?? [];
             const assigned = isAssigned(job);
             return (
@@ -636,18 +618,6 @@ export default function TechnicianWorkplansPage() {
                           {planShortages.map((m) => m.material.materialName).join(", ")} — แจ้งฝ่ายบัญชีแล้วอัตโนมัติ
                         </p>
                       )}
-                    </div>
-                  )}
-
-                  {["PLAN_APPROVED", "IN_PROGRESS", "WAITING_ACCEPTANCE"].includes(job.status) && (
-                    <div className="rounded-md border p-3 space-y-2">
-                      <p className="text-sm font-medium">รูปถ่ายหน้างาน (หลักฐานก่อน/หลังทำงาน)</p>
-                      <AttachmentGallery
-                        jobId={job.id}
-                        categories={["WORK_BEFORE", "WORK_AFTER", "SAFETY_CHECK"]}
-                        uploadable={assigned ? workPhotoCategories(job.status) : []}
-                        refreshKey={job.safetyChecks?.[0]?.id}
-                      />
                     </div>
                   )}
 

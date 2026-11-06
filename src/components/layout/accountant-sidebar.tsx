@@ -3,7 +3,7 @@
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { Building2, LayoutDashboard, FileText, ShoppingCart, Receipt } from "lucide-react";
+import { Building2, LayoutDashboard, FileText, ShoppingCart, Receipt, Wallet, KeyRound } from "lucide-react";
 import { cn } from "@/lib/utils";
 
 const NAV_ITEMS = [
@@ -11,13 +11,15 @@ const NAV_ITEMS = [
   { href: "/accountant/quotations", label: "ใบเสนอราคา", icon: FileText },
   { href: "/accountant/purchase", label: "สั่งซื้ออุปกรณ์", icon: ShoppingCart },
   { href: "/accountant/invoices", label: "ใบแจ้งหนี้", icon: Receipt },
+  { href: "/accountant/receivables", label: "ลูกหนี้ค้างชำระ", icon: Wallet },
+  { href: "/accountant/account", label: "เปลี่ยนรหัสผ่าน", icon: KeyRound },
 ];
 
 export function AccountantSidebar() {
   const pathname = usePathname();
 
   return (
-    <aside className="w-60 border-r bg-white flex flex-col shrink-0">
+    <aside className="w-60 border-r bg-white flex flex-col shrink-0 print:hidden">
       <div className="h-14 flex items-center gap-2 px-5 border-b">
         <Building2 className="h-6 w-6 text-primary" />
         <span className="font-bold text-base leading-tight">Elevator<br />Service</span>

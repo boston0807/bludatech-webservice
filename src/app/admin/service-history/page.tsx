@@ -10,6 +10,15 @@ import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import {
+  EMPTY_FILTERS,
+  FilterBar,
+  Pagination,
+  filtersToQuery,
+  useDebounced,
+  usePagination,
+  type ListFilters,
+} from "@/components/ui/list-controls";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 
 type Payment = { id: string; paymentDate: string; amount: string; paymentMethod: string };
@@ -37,12 +46,21 @@ const PAYMENT_METHOD_LABEL: Record<string, string> = {
 const baht = (v?: string | null) =>
   Number(v ?? 0).toLocaleString("th-TH", { minimumFractionDigits: 2 }) + " บาท";
 
+const TYPE_OPTIONS = [
+  { value: "INSTALLATION", label: "ติดตั้งลิฟต์" },
+  { value: "REPAIR", label: "ซ่อมรายครั้ง" },
+  { value: "SERVICE", label: "บำรุงรักษา" },
+];
+
 export default function ServiceHistoryApprovalPage() {
   const [jobs, setJobs] = useState<Job[]>([]);
   const [drafts, setDrafts] = useState<Record<string, Draft>>({});
   const [loading, setLoading] = useState(true);
   const [savingId, setSavingId] = useState<string | null>(null);
   const [toast, setToast] = useState<{ message: string; type: "success" | "error" } | null>(null);
+  const [filters, setFilters] = useState<ListFilters>(EMPTY_FILTERS);
+  const query = filtersToQuery(useDebounced(filters), { status: "PAID" });
+  const { pageItems, ...pager } = usePagination(jobs, 10);
 
   const showToast = (message: string, type: "success" | "error") => {
     setToast({ message, type });
@@ -52,7 +70,7 @@ export default function ServiceHistoryApprovalPage() {
   const fetchJobs = useCallback(async () => {
     setLoading(true);
     try {
-      const res = await fetch("/api/jobs?status=PAID");
+      const res = await fetch(`/api/jobs${query}`);
       const data = await res.json();
       if (res.ok && data.success) {
         setJobs(data.data);
@@ -74,7 +92,7 @@ export default function ServiceHistoryApprovalPage() {
     } finally {
       setLoading(false);
     }
-  }, []);
+  }, [query]);
 
   useEffect(() => {
     fetchJobs();
@@ -128,6 +146,14 @@ export default function ServiceHistoryApprovalPage() {
         </Badge>
       </div>
 
+      <FilterBar
+        value={filters}
+        onChange={setFilters}
+        searchPlaceholder="ค้นหาชื่อลูกค้า เบอร์โทร ที่อยู่ หรือเลขที่ใบงาน"
+        jobTypeOptions={TYPE_OPTIONS}
+        dateLabel="วันที่ยื่นคำขอ"
+      />
+
       {loading && (
         <div className="flex justify-center py-20">
           <Loader2 className="h-8 w-8 animate-spin text-muted-foreground" />
@@ -146,7 +172,7 @@ export default function ServiceHistoryApprovalPage() {
 
       {!loading && jobs.length > 0 && (
         <div className="grid gap-4">
-          {jobs.map((job) => {
+          {pageItems.map((job) => {
             const Icon = JOB_TYPE_ICON[job.jobType];
             const payment = job.receipt?.payments?.[0];
             const draft = drafts[job.id] ?? { summary: "", technicianNames: "" };
@@ -232,6 +258,7 @@ export default function ServiceHistoryApprovalPage() {
               </Card>
             );
           })}
+          <Pagination {...pager} onPage={pager.setPage} />
         </div>
       )}
     </div>

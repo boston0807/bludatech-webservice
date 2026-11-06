@@ -3,7 +3,7 @@
 
 import { useState } from "react";
 import { useRouter } from "next/navigation";
-import { useForm } from "react-hook-form";
+import { Controller, useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import Link from "next/link";
 import { Loader2, Building2, CheckCircle2 } from "lucide-react";
@@ -21,15 +21,13 @@ export default function RegisterPage() {
 
   const {
     register,
+    control,
     handleSubmit,
-    setValue,
-    watch,
     formState: { errors, isSubmitting },
   } = useForm<RegisterInput>({
     resolver: zodResolver(registerSchema),
     defaultValues: { customerAddress: "" },
   });
-  const customerAddress = watch("customerAddress");
 
   const onSubmit = async (data: RegisterInput) => {
     setServerError(null);
@@ -156,15 +154,21 @@ export default function RegisterPage() {
                   <Input id="taxId" placeholder="กรอกเลขประจำตัวผู้เสียภาษี (ถ้ามี)" {...register("taxId")} />
                 </div>
 
-                <LocationPicker
-                  label="ที่อยู่"
-                  required
-                  value={customerAddress ?? ""}
-                  onChange={(address) =>
-                    setValue("customerAddress", address, { shouldValidate: !!errors.customerAddress })
-                  }
-                  error={errors.customerAddress?.message}
-                />
+                <div className="space-y-2">
+                  <Controller
+                    name="customerAddress"
+                    control={control}
+                    render={({ field }) => (
+                      <LocationPicker
+                        label="ที่อยู่"
+                        required
+                        value={field.value ?? ""}
+                        onChange={field.onChange}
+                        error={errors.customerAddress?.message}
+                      />
+                    )}
+                  />
+                </div>
               </div>
             </div>
           </CardContent>

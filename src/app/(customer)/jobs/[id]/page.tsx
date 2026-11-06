@@ -11,7 +11,6 @@ import {
   Settings,
   ChevronLeft,
   CheckCircle2,
-  Circle,
   MapPin,
   FileText,
   ClipboardCheck,
@@ -33,7 +32,8 @@ import {
 } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { AttachmentGallery } from "@/components/attachments";
+import { JobTimeline } from "@/components/jobs/job-timeline";
+import { PrintableDocument, PrintButton } from "@/components/documents/printable-document";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -50,6 +50,7 @@ type Quotation = {
   status: "PENDING" | "APPROVED" | "REJECTED";
   rejectNote: string | null;
   createdAt: string;
+  updatedAt: string;
 };
 
 type WorkPlan = {
@@ -59,6 +60,8 @@ type WorkPlan = {
   location: string | null;
   status: string;
   rejectNote: string | null;
+  createdAt: string;
+  updatedAt: string;
   materials?: {
     quantity: number;
     material: { materialName: string };
@@ -85,7 +88,13 @@ type Job = {
   requestDate: string;
   reworkNote: string | null;
   invoicePendingReview?: boolean;
-  receipt: { id: string; status: string } | null;
+  receipt: {
+    id: string;
+    status: string;
+    createdAt: string;
+    payments: { paymentDate: string; amount: string }[];
+  } | null;
+  surveys: { surveyDate: string; method: string; technician: { employeeName: string } | null }[];
   safetyChecks: SafetyCheck[];
   parentJob: { id: string; jobAddress: string } | null;
   customer: {
@@ -93,6 +102,7 @@ type Job = {
     customerPhone: string;
     customerEmail: string | null;
     customerAddress: string;
+    taxId: string | null;
   };
   installation?: {
     buildingFloor: number;
@@ -159,32 +169,6 @@ const JOB_TYPE_ICON = {
   REPAIR: Wrench,
   SERVICE: Settings,
 };
-
-// Timeline steps
-const TIMELINE_STEPS = [
-  { key: "PENDING", label: "ยื่นคำขอ" },
-  { key: "PASS_SURVEY", label: "สำรวจแล้ว" },
-  { key: "QUOTED", label: "ใบเสนอราคา" },
-  { key: "APPROVE", label: "อนุมัติ" },
-  { key: "PLAN_APPROVED", label: "อนุมัติแผน" },
-  { key: "IN_PROGRESS", label: "ดำเนินการ" },
-  { key: "WAITING_ACCEPTANCE", label: "รอตรวจรับ" },
-  { key: "ACCEPTED", label: "ตรวจรับแล้ว" },
-  { key: "PAID", label: "ชำระเงิน" },
-  { key: "COMPLETED", label: "เสร็จสิ้น" },
-];
-
-const STATUS_ORDER = TIMELINE_STEPS.map((s) => s.key);
-
-function getStepStatus(stepKey: string, currentStatus: string) {
-  if (currentStatus === "CANCELLED") return "cancelled";
-  if (currentStatus === "COMPLETED") return "done";
-  const stepIdx = STATUS_ORDER.indexOf(stepKey);
-  const currentIdx = STATUS_ORDER.indexOf(currentStatus);
-  if (stepIdx < currentIdx) return "done";
-  if (stepIdx === currentIdx) return "current";
-  return "pending";
-}
 
 // ─── Component ────────────────────────────────────────────────────────────────
 
@@ -359,7 +343,22 @@ export default function CustomerJobDetailPage({
   );
 
   return (
-    <div className="max-w-3xl mx-auto space-y-6">
+    <>
+    {job.quotation && (
+      <PrintableDocument
+        kind="QUOTATION"
+        docNo={`QT-${job.quotation.id.slice(0, 10).toUpperCase()}`}
+        issuedAt={job.quotation.createdAt}
+        jobId={job.id}
+        jobType={job.jobType}
+        jobAddress={job.jobAddress}
+        customer={job.customer}
+        expenses={job.expenses}
+        jobWage={job.jobWage}
+        totalAmount={job.quotation.totalAmount}
+      />
+    )}
+    <div className="max-w-3xl mx-auto space-y-6 print:hidden">
       {/* Back + Header */}
       <div>
         <Link
@@ -405,56 +404,7 @@ export default function CustomerJobDetailPage({
       )}
 
       {/* Status Timeline */}
-      {job.status !== "CANCELLED" && (
-        <Card>
-          <CardHeader className="pb-3">
-            <CardTitle className="text-base">สถานะใบงาน</CardTitle>
-          </CardHeader>
-          <CardContent>
-            <div className="flex items-center gap-0 overflow-x-auto pb-2">
-              {TIMELINE_STEPS.map((step, idx) => {
-                const status = getStepStatus(step.key, job.status);
-                return (
-                  <div key={step.key} className="flex items-center flex-shrink-0">
-                    <div className="flex flex-col items-center gap-1 min-w-[60px]">
-                      {status === "done" ? (
-                        <CheckCircle2 className="h-5 w-5 text-green-600" />
-                      ) : status === "current" ? (
-                        <div className="h-5 w-5 rounded-full bg-primary flex items-center justify-center">
-                          <div className="h-2 w-2 rounded-full bg-white" />
-                        </div>
-                      ) : (
-                        <Circle className="h-5 w-5 text-muted-foreground/40" />
-                      )}
-                      <span
-                        className={`text-[10px] text-center leading-tight ${
-                          status === "current"
-                            ? "text-primary font-semibold"
-                            : status === "done"
-                            ? "text-green-600"
-                            : "text-muted-foreground/50"
-                        }`}
-                      >
-                        {step.label}
-                      </span>
-                    </div>
-                    {idx < TIMELINE_STEPS.length - 1 && (
-                      <div
-                        className={`h-0.5 w-4 flex-shrink-0 mx-0.5 ${
-                          STATUS_ORDER.indexOf(step.key) <
-                          STATUS_ORDER.indexOf(job.status)
-                            ? "bg-green-400"
-                            : "bg-muted-foreground/20"
-                        }`}
-                      />
-                    )}
-                  </div>
-                );
-              })}
-            </div>
-          </CardContent>
-        </Card>
-      )}
+      {job.status !== "CANCELLED" && <JobTimeline job={job} />}
 
       {job.status === "CANCELLED" && (
         <div className="bg-destructive/10 border border-destructive/30 text-destructive rounded-md px-4 py-3 text-sm font-medium">
@@ -646,10 +596,13 @@ export default function CustomerJobDetailPage({
       {job.quotation && (
         <Card>
           <CardHeader>
-            <CardTitle className="text-base flex items-center gap-2">
-              <FileText className="h-4 w-4" />
-              ใบเสนอราคา
-            </CardTitle>
+            <div className="flex items-center justify-between gap-2">
+              <CardTitle className="text-base flex items-center gap-2">
+                <FileText className="h-4 w-4" />
+                ใบเสนอราคา
+              </CardTitle>
+              <PrintButton label="พิมพ์ใบเสนอราคา" />
+            </div>
             <CardDescription>
               ออกเมื่อ{" "}
               {new Date(job.quotation.createdAt).toLocaleDateString("th-TH", {
@@ -925,23 +878,6 @@ export default function CustomerJobDetailPage({
           </Card>
         )}
 
-      {/* รูปถ่ายหน้างานจากช่าง — ดูประกอบการตรวจรับงาน และเป็นหลักฐานหากมีข้อโต้แย้ง */}
-      {["PASS_SURVEY", "QUOTED", "REQUEST_EDIT", "APPROVE", "PLAN_APPROVED", "IN_PROGRESS", "WAITING_ACCEPTANCE", "ACCEPTED", "PAID", "COMPLETED"].includes(job.status) && (
-        <Card>
-          <CardHeader className="pb-3">
-            <CardTitle className="text-base">รูปถ่ายหน้างาน</CardTitle>
-            <CardDescription>รูปที่ช่างบันทึกไว้ระหว่างสำรวจ ก่อน และหลังทำงาน (คลิกที่รูปเพื่อดูขนาดเต็ม)</CardDescription>
-          </CardHeader>
-          <CardContent>
-            <AttachmentGallery
-              jobId={job.id}
-              categories={["SURVEY", "WORK_BEFORE", "WORK_AFTER", "SAFETY_CHECK"]}
-              emptyText="ช่างยังไม่ได้แนบรูปถ่าย"
-            />
-          </CardContent>
-        </Card>
-      )}
-
       {/* UC14 ตรวจรับงาน — ผ่าน / ไม่ผ่าน */}
       {job.status === "WAITING_ACCEPTANCE" && (
         <Card className="border-primary">
@@ -990,5 +926,6 @@ export default function CustomerJobDetailPage({
         </Card>
       )}
     </div>
+    </>
   );
 }

@@ -62,6 +62,26 @@ export function describeConflicts(conflicts: ScheduleConflict[]): string {
   return `ตารางงานช่างชนกัน: ${lines.join("; ")}`;
 }
 
+// ใบงานที่รอช่างสำรวจ (UC05) — ช่างทุกคนต้องเห็นเพื่อรับไปสำรวจ
+export const SURVEY_QUEUE_STATUSES: JobStatus[] = ["PENDING", "REQUEST_EDIT"];
+
+/**
+ * ใบงานที่ช่างทั่วไป (TECHNICIAN) มองเห็นได้:
+ *   - งานที่รอสำรวจ, งานที่ตัวเองเคยสำรวจ, งานที่ได้รับมอบหมายในแผนงาน
+ *   - แผนเก่าที่ยังไม่มีการมอบหมายช่าง (สอดคล้องกับ canWorkOnPlan)
+ * หัวหน้าช่างเห็นทุกงาน
+ */
+export function technicianJobWhere(employeeId: string): Prisma.JobWhereInput {
+  return {
+    OR: [
+      { status: { in: SURVEY_QUEUE_STATUSES } },
+      { surveys: { some: { technicianId: employeeId } } },
+      { workPlan: { technicians: { some: { employeeId } } } },
+      { workPlan: { technicians: { none: {} } } },
+    ],
+  };
+}
+
 /**
  * ช่างทั่วไปเริ่มงาน/บันทึกผลได้เฉพาะงานที่ตนได้รับมอบหมาย
  * หัวหน้าช่างและแอดมินทำแทนได้ทุกงาน, แผนเก่าที่ยังไม่มีการมอบหมาย (ก่อนมีฟีเจอร์นี้) ช่างทุกคนทำได้

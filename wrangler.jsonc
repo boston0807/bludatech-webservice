@@ -1,7 +1,11 @@
 {
 	"$schema": "node_modules/wrangler/config-schema.json",
-	// custom-worker.ts ห่อ .open-next/worker.js และเพิ่ม scheduled() สำหรับ Cron
-	"main": "custom-worker.ts",
+	// custom-worker.ts ห่อ .open-next/worker.js และเพิ่ม scheduled() สำหรับ cron
+	"main": "./custom-worker.ts",
+	// 01:00 UTC = 08:00 เวลาไทย — ส่งอีเมลเตือนรอบบำรุงล่วงหน้า (ต้องตั้ง secret CRON_SECRET)
+	"triggers": {
+		"crons": ["0 1 * * *"]
+	},
 	"name": "bludatech-webservice",
 	"compatibility_date": "2026-11-04",
 	"compatibility_flags": [
@@ -29,10 +33,6 @@
     "SMTP_SECURE": "true",
     "SMTP_USER": "bostonkc55h4@gmail.com"
   	},
-	// งานตั้งเวลา (เวลา UTC) — แต่ละ cron ผูกกับ route ใน custom-worker.ts → CRON_ROUTES
-	"triggers": {
-		"crons": ["0 0 * * *"] // 07:00 น. เวลาไทย: สร้างใบงานรอบบำรุงล่วงหน้า
-	},
 	"images": {
 		// Enable image optimization
 		// see https://opennext.js.org/cloudflare/howtos/image

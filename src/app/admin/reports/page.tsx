@@ -3,12 +3,14 @@
 "use client";
 
 import { useCallback, useEffect, useState } from "react";
-import { Loader2, Printer, BarChart3, History, Package } from "lucide-react";
+import { Loader2, Printer, BarChart3, History, Package, Download, Search } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
-import { JOB_TYPE_LABEL, baht, thDate, toDateInput } from "@/lib/labels";
+import { JOB_TYPE_LABEL, ROLE_LABEL, baht, thDate, toDateInput } from "@/lib/labels";
+import { downloadCsv, csvDate } from "@/lib/csv";
+import { KpiSection, type Kpi } from "@/components/reports/kpi-section";
 
 type SummaryRow = {
   jobType: string;
@@ -41,6 +43,14 @@ type MaterialRow = {
 
 const num = (n: number) => n.toLocaleString("th-TH");
 
+function CsvButton({ onClick, disabled }: { onClick: () => void; disabled?: boolean }) {
+  return (
+    <Button variant="outline" size="sm" onClick={onClick} disabled={disabled} className="print:hidden">
+      <Download className="h-4 w-4" /> CSV
+    </Button>
+  );
+}
+
 export default function AdminReportsPage() {
   const now = new Date();
   const [from, setFrom] = useState(`${now.getFullYear()}-01-01`);
@@ -53,6 +63,8 @@ export default function AdminReportsPage() {
     rows: MaterialRow[];
     totals: { usedQty: number; reservedQty: number; stockValue: number; shortageItems: number };
   } | null>(null);
+  const [kpi, setKpi] = useState<Kpi | null>(null);
+  const [historyQ, setHistoryQ] = useState("");
 
   const load = useCallback(() => {
     setLoading(true);
@@ -62,15 +74,17 @@ export default function AdminReportsPage() {
       fetch(`/api/reports?type=jobs-summary&${q}`).then((r) => r.json()),
       fetch(`/api/reports?type=service-history&${q}`).then((r) => r.json()),
       fetch(`/api/reports?type=materials`).then((r) => r.json()),
+      fetch(`/api/reports?type=kpi&${q}`).then((r) => r.json()),
     ])
-      .then(([s, h, m]) => {
-        if (!s.success || !h.success || !m.success) {
-          setError(s.message || h.message || m.message || "โหลดรายงานไม่สำเร็จ");
+      .then(([s, h, m, k]) => {
+        if (!s.success || !h.success || !m.success || !k.success) {
+          setError(s.message || h.message || m.message || k.message || "โหลดรายงานไม่สำเร็จ");
           return;
         }
         setSummary(s.data);
         setHistory(h.data);
         setMaterials(m.data);
+        setKpi(k.data);
       })
       .catch(() => setError("เกิดข้อผิดพลาดในการโหลดรายงาน"))
       .finally(() => setLoading(false));
@@ -81,6 +95,85 @@ export default function AdminReportsPage() {
     // โหลดครั้งแรกเท่านั้น ครั้งต่อไปกดปุ่ม "แสดงรายงาน"
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
+
+  const range = `${from}_${to}`;
+  const historyRows = (history?.rows ?? []).filter((r) => {
+    const q = historyQ.trim().toLowerCase();
+    if (!q) return true;
+    return [r.customerName, r.technicianNames, JOB_TYPE_LABEL[r.jobType]].some((v) => v?.toLowerCase().includes(q));
+  });
+
+  const exportSummary = () =>
+    summary &&
+    downloadCsv(
+      `report-jobs-summary-${range}`,
+      ["ประเภทงาน", "งานทั้งหมด", "เสร็จสิ้น", "กำลังดำเนินการ", "ยกเลิก", "รายได้รวม", "รายได้เฉลี่ย/งาน"],
+      [
+        ...summary.rows.map((r) => [
+          JOB_TYPE_LABEL[r.jobType],
+          r.totalJobs,
+          r.completedJobs,
+          r.inProgressJobs,
+          r.cancelledJobs,
+          r.totalRevenue.toFixed(2),
+          r.avgRevenue.toFixed(2),
+        ]),
+        [
+          "รวม",
+          summary.totals.totalJobs,
+          summary.totals.completedJobs,
+          summary.totals.inProgressJobs,
+          summary.totals.cancelledJobs,
+          summary.totals.totalRevenue.toFixed(2),
+          summary.totals.avgRevenue.toFixed(2),
+        ],
+      ]
+    );
+
+  const exportHistory = () =>
+    downloadCsv(
+      `report-service-history-${range}`,
+      ["วันที่เสร็จสิ้น", "ลูกค้า", "ประเภทงาน", "ช่างผู้ปฏิบัติงาน", "ค่าใช้จ่ายรวม", "สิ้นสุดอายุบริการ"],
+      historyRows.map((r) => [
+        csvDate(r.completedDate),
+        r.customerName,
+        JOB_TYPE_LABEL[r.jobType],
+        r.technicianNames,
+        r.totalCost.toFixed(2),
+        csvDate(r.endServiceDate),
+      ])
+    );
+
+  const exportMaterials = () =>
+    materials &&
+    downloadCsv(
+      `report-materials-${csvDate(new Date())}`,
+      ["วัสดุ", "ราคา/หน่วย", "ใช้ไปแล้ว", "จองไว้", "คงเหลือ", "มูลค่าคงเหลือ", "ต้องสั่งเพิ่ม"],
+      materials.rows.map((r) => [
+        r.materialName,
+        r.price.toFixed(2),
+        r.usedQty,
+        r.reservedQty,
+        r.stockQuantity,
+        r.stockValue.toFixed(2),
+        r.shortageQty,
+      ])
+    );
+
+  const exportKpi = () =>
+    kpi &&
+    downloadCsv(`report-kpi-${range}`, ["หมวด", "รายการ", "ค่า", "หน่วย", "จำนวนตัวอย่าง"], [
+      ...kpi.stages.map((st) => ["ระยะเวลาเฉลี่ย", st.label, st.avgDays ?? "", "วัน", st.sample]),
+      ["ความปลอดภัย", "อัตราผ่านทดสอบครั้งแรก", kpi.safety.firstPassRate ?? "", "%", kpi.safety.testedJobs],
+      ...kpi.technicians.map((t) => [
+        "ภาระงานช่าง",
+        `${t.employeeName} (${ROLE_LABEL[t.role] ?? t.role})`,
+        t.workDays,
+        "วันทำงาน",
+        t.plans,
+      ]),
+      ...kpi.revenueByType.map((r) => ["รายได้รับชำระ", JOB_TYPE_LABEL[r.jobType], r.amount.toFixed(2), "บาท", r.payments]),
+    ]);
 
   const th = "px-3 py-2 text-left font-medium text-muted-foreground border-b";
   const thR = "px-3 py-2 text-right font-medium text-muted-foreground border-b";
@@ -125,9 +218,12 @@ export default function AdminReportsPage() {
           {summary && (
             <Card className="print:shadow-none print:break-inside-avoid">
               <CardHeader>
-                <CardTitle className="text-base flex items-center gap-2">
-                  <BarChart3 className="h-5 w-5 text-primary" /> 1. สรุปภาพรวมงานบริการแยกตามประเภทงาน
-                </CardTitle>
+                <div className="flex items-center justify-between gap-2">
+                  <CardTitle className="text-base flex items-center gap-2">
+                    <BarChart3 className="h-5 w-5 text-primary" /> 1. สรุปภาพรวมงานบริการแยกตามประเภทงาน
+                  </CardTitle>
+                  <CsvButton onClick={exportSummary} />
+                </div>
                 <CardDescription>นับจากวันที่ลูกค้ายื่นคำขอในช่วงที่เลือก รายได้นับจากงานที่บันทึกประวัติแล้ว</CardDescription>
               </CardHeader>
               <CardContent className="overflow-x-auto">
@@ -175,16 +271,33 @@ export default function AdminReportsPage() {
           {history && (
             <Card className="print:shadow-none">
               <CardHeader>
-                <CardTitle className="text-base flex items-center gap-2">
-                  <History className="h-5 w-5 text-primary" /> 2. ประวัติการให้บริการลูกค้า
-                </CardTitle>
+                <div className="flex flex-wrap items-center justify-between gap-2">
+                  <CardTitle className="text-base flex items-center gap-2">
+                    <History className="h-5 w-5 text-primary" /> 2. ประวัติการให้บริการลูกค้า
+                  </CardTitle>
+                  <div className="flex items-center gap-2">
+                    <div className="relative print:hidden">
+                      <Search className="absolute left-2 top-2 h-4 w-4 text-muted-foreground" />
+                      <Input
+                        className="h-8 pl-7 w-52"
+                        placeholder="ค้นหาลูกค้า / ช่าง"
+                        value={historyQ}
+                        onChange={(e) => setHistoryQ(e.target.value)}
+                        aria-label="ค้นหาประวัติการให้บริการ"
+                      />
+                    </div>
+                    <CsvButton onClick={exportHistory} disabled={historyRows.length === 0} />
+                  </div>
+                </div>
                 <CardDescription>
                   งานที่บันทึกประวัติในช่วงที่เลือก {num(history.totals.count)} งาน รวม {baht(history.totals.totalCost)}
                 </CardDescription>
               </CardHeader>
               <CardContent className="overflow-x-auto">
-                {history.rows.length === 0 ? (
-                  <p className="text-sm text-muted-foreground">ไม่มีงานที่บันทึกประวัติในช่วงนี้</p>
+                {historyRows.length === 0 ? (
+                  <p className="text-sm text-muted-foreground">
+                    {historyQ ? "ไม่พบรายการที่ตรงกับคำค้นหา" : "ไม่มีงานที่บันทึกประวัติในช่วงนี้"}
+                  </p>
                 ) : (
                   <table className="w-full text-sm">
                     <thead>
@@ -198,7 +311,7 @@ export default function AdminReportsPage() {
                       </tr>
                     </thead>
                     <tbody>
-                      {history.rows.map((r) => (
+                      {historyRows.map((r) => (
                         <tr key={r.historyId}>
                           <td className={td}>{thDate(r.completedDate)}</td>
                           <td className={td}>{r.customerName}</td>
@@ -218,9 +331,12 @@ export default function AdminReportsPage() {
           {materials && (
             <Card className="print:shadow-none print:break-inside-avoid">
               <CardHeader>
-                <CardTitle className="text-base flex items-center gap-2">
-                  <Package className="h-5 w-5 text-primary" /> 3. การใช้วัสดุและสต็อกคงเหลือ (ณ ปัจจุบัน)
-                </CardTitle>
+                <div className="flex items-center justify-between gap-2">
+                  <CardTitle className="text-base flex items-center gap-2">
+                    <Package className="h-5 w-5 text-primary" /> 3. การใช้วัสดุและสต็อกคงเหลือ (ณ ปัจจุบัน)
+                  </CardTitle>
+                  <CsvButton onClick={exportMaterials} />
+                </div>
                 <CardDescription>
                   ใช้ไปแล้ว = แผนงานของงานที่เริ่มแล้ว · จองไว้ = แผนงานที่ยังไม่เริ่ม · มูลค่าคงเหลือรวม{" "}
                   {baht(materials.totals.stockValue)}
@@ -258,6 +374,8 @@ export default function AdminReportsPage() {
               </CardContent>
             </Card>
           )}
+
+          {kpi && <KpiSection kpi={kpi} action={<CsvButton onClick={exportKpi} />} />}
         </>
       )}
     </div>

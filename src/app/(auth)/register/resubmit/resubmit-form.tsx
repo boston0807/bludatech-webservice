@@ -84,7 +84,7 @@ export function ResubmitForm() {
     }
   };
 
-  const field = (key: "customerName" | "customerPhone" | "customerEmail" | "taxId", label: string, placeholder?: string) => (
+  const field = (key: keyof Profile, label: string, placeholder?: string) => (
     <div className="space-y-2">
       <Label htmlFor={key}>{label}</Label>
       <Input

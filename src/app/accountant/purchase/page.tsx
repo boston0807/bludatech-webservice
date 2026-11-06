@@ -2,14 +2,13 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { Loader2, Package, Plus, ShoppingCart, AlertTriangle, CheckCircle2, History } from "lucide-react";
+import { Loader2, Package, Plus, ShoppingCart, AlertTriangle, CheckCircle2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Badge } from "@/components/ui/badge";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { thDate } from "@/lib/labels";
-import { StockHistoryPanel } from "@/components/stock-history-panel";
 
 type Shortage = {
   id: string;
@@ -46,12 +45,7 @@ export default function AccountantPurchasePage() {
   // Restock modal/state
   const [restockMaterial, setRestockMaterial] = useState<Material | null>(null);
   const [addQty, setAddQty] = useState(10);
-  const [restockNote, setRestockNote] = useState("");
   const [restocking, setRestocking] = useState(false);
-
-  // ประวัติสต็อก — historyKey เปลี่ยนเมื่อสต็อกเปลี่ยน เพื่อให้แผงโหลดข้อมูลใหม่
-  const [historyMaterialId, setHistoryMaterialId] = useState<string | null>(null);
-  const [historyKey, setHistoryKey] = useState(0);
 
   const fetchMaterials = () => {
     setLoading(true);
@@ -122,15 +116,13 @@ export default function AccountantPurchasePage() {
       const res = await fetch(`/api/materials/${restockMaterial.id}/stock`, {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ addQuantity: addQty, note: restockNote.trim() || undefined }),
+        body: JSON.stringify({ addQuantity: addQty }),
       });
       const data = await res.json();
       if (data.success) {
         setSuccessMsg(`เติมสต็อก "${restockMaterial.materialName}" สำเร็จ (+${addQty})`);
         setRestockMaterial(null);
         setAddQty(10);
-        setRestockNote("");
-        setHistoryKey((k) => k + 1);
         fetchMaterials();
       } else {
         setError(data.message || "เติมสต็อกไม่สำเร็จ");
@@ -250,20 +242,10 @@ export default function AccountantPurchasePage() {
           <CardContent className="space-y-4">
             <div className="space-y-2 max-w-xs">
               <Label htmlFor="addQty">จำนวนที่ต้องการสั่งซื้อเพิ่มเข้าคลัง</Label>
-              <Input id="addQty" type="number" min="1" step="1" value={addQty} onChange={(e) => setAddQty(parseInt(e.target.value) || 1)} />
-            </div>
-            <div className="space-y-2 max-w-md">
-              <Label htmlFor="restockNote">หมายเหตุ (ไม่บังคับ)</Label>
-              <Input
-                id="restockNote"
-                value={restockNote}
-                maxLength={500}
-                onChange={(e) => setRestockNote(e.target.value)}
-                placeholder="เช่น เลขที่ใบสั่งซื้อ / ผู้ขาย"
-              />
+              <Input id="addQty" type="number" min="1" value={addQty} onChange={(e) => setAddQty(parseInt(e.target.value) || 1)} />
             </div>
             <div className="flex justify-end gap-2 pt-2">
-              <Button variant="outline" onClick={() => { setRestockMaterial(null); setRestockNote(""); }}>ยกเลิก</Button>
+              <Button variant="outline" onClick={() => setRestockMaterial(null)}>ยกเลิก</Button>
               <Button onClick={handleRestock} disabled={restocking} className="bg-amber-600 hover:bg-amber-700 text-white">
                 {restocking && <Loader2 className="h-4 w-4 animate-spin mr-1.5" />}
                 ยืนยันรับเข้าสต็อก
@@ -271,16 +253,6 @@ export default function AccountantPurchasePage() {
             </div>
           </CardContent>
         </Card>
-      )}
-
-      {historyMaterialId && (
-        <div id="stock-history" className="scroll-mt-4">
-        <StockHistoryPanel
-          key={`${historyMaterialId}-${historyKey}`}
-          materialId={historyMaterialId}
-          onClose={() => setHistoryMaterialId(null)}
-        />
-        </div>
       )}
 
       {loading ? (
@@ -324,21 +296,7 @@ export default function AccountantPurchasePage() {
                     <span className="text-muted-foreground">ราคาต่อหน่วย:</span>
                     <span>{Number(mat.price).toLocaleString()} บาท</span>
                   </div>
-                  <div className="pt-2 border-t flex justify-end gap-2">
-                    <Button
-                      size="sm"
-                      variant="ghost"
-                      onClick={() => {
-                        setHistoryMaterialId(mat.id);
-                        // รอให้แผงแสดงก่อน แล้วเลื่อนไปที่แผง
-                        requestAnimationFrame(() =>
-                          document.getElementById("stock-history")?.scrollIntoView({ behavior: "smooth", block: "start" })
-                        );
-                      }}
-                      className="gap-1.5 text-xs"
-                    >
-                      <History className="h-3.5 w-3.5" /> ประวัติสต็อก
-                    </Button>
+                  <div className="pt-2 border-t flex justify-end">
                     <Button size="sm" variant="outline" onClick={() => setRestockMaterial(mat)} className="gap-1.5 text-xs">
                       <ShoppingCart className="h-3.5 w-3.5" /> สั่งซื้อ/เติมสต็อก
                     </Button>

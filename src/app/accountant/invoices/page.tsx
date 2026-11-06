@@ -2,12 +2,22 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { Loader2, Receipt, FileText, CheckCircle2, Clock, AlertCircle } from "lucide-react";
+import { Loader2, Receipt, FileText, Download } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import Link from "next/link";
-import { RECEIPT_STATUS_LABEL } from "@/lib/labels";
+import { JOB_TYPE_LABEL, RECEIPT_STATUS_LABEL } from "@/lib/labels";
+import {
+  EMPTY_FILTERS,
+  FilterBar,
+  Pagination,
+  filtersToQuery,
+  useDebounced,
+  usePagination,
+  type ListFilters,
+} from "@/components/ui/list-controls";
+import { downloadCsv, csvDate } from "@/lib/csv";
 
 type Job = {
   id: string;
@@ -40,32 +50,67 @@ export default function AccountantInvoicesPage() {
   const [error, setError] = useState<string | null>(null);
   const [actionLoading, setActionLoading] = useState<string | null>(null);
   const [successMsg, setSuccessMsg] = useState<string | null>(null);
+  const [filters, setFilters] = useState<ListFilters>(EMPTY_FILTERS);
+  const [listLoading, setListLoading] = useState(false);
+  const query = filtersToQuery(useDebounced(filters));
+  const { pageItems, ...pager } = usePagination(receipts, 10);
 
-  const loadData = () => {
-    setLoading(true);
-    Promise.all([
-      fetch("/api/jobs").then((r) => r.json()),
-      fetch("/api/invoices").then((r) => r.json()),
-    ])
-      .then(([jobsRes, invoicesRes]) => {
-        if (jobsRes.success) {
-          // Jobs that are ACCEPTED or PAID/COMPLETED
-          const filtered = jobsRes.data.filter((j: Job) =>
-            ["ACCEPTED", "PAID", "COMPLETED"].includes(j.status)
-          );
-          setAcceptedJobs(filtered);
-        }
-        if (invoicesRes.success) {
-          setReceipts(invoicesRes.data);
-        }
+  const loadReceipts = () => {
+    setListLoading(true);
+    return fetch(`/api/invoices${query}`)
+      .then((r) => r.json())
+      .then((d) => {
+        if (d.success) setReceipts(d.data);
+        else setError(d.message ?? "โหลดรายการใบแจ้งหนี้ไม่สำเร็จ");
+      })
+      .catch(() => setError("เกิดข้อผิดพลาดในการโหลดข้อมูล"))
+      .finally(() => setListLoading(false));
+  };
+
+  const loadJobs = () =>
+    fetch("/api/jobs?status=ACCEPTED")
+      .then((r) => r.json())
+      .then((jobsRes) => {
+        if (jobsRes.success) setAcceptedJobs(jobsRes.data);
       })
       .catch(() => setError("เกิดข้อผิดพลาดในการโหลดข้อมูล"))
       .finally(() => setLoading(false));
+
+  // โหลดใหม่ทั้งสองส่วนหลังออกใบแจ้งหนี้
+  const loadData = () => {
+    loadJobs();
+    loadReceipts();
   };
 
   useEffect(() => {
-    loadData();
+    loadJobs();
   }, []);
+
+  // รายการใบแจ้งหนี้โหลดตามตัวกรอง (รวมครั้งแรกด้วย)
+  useEffect(() => {
+    loadReceipts();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [query]);
+
+  const exportCsv = () => {
+    downloadCsv(
+      `invoices-${csvDate(new Date())}`,
+      ["เลขที่ใบแจ้งหนี้", "เลขที่ใบงาน", "วันที่ออก", "ลูกค้า", "เบอร์โทร", "ประเภทงาน", "ที่อยู่", "สถานะ", "ยอดรวม (บาท)", "ชำระแล้ว (บาท)", "วันที่ชำระ"],
+      receipts.map((r) => [
+        r.id,
+        r.jobId,
+        csvDate(r.createdAt),
+        r.job.customer.customerName,
+        r.job.customer.customerPhone,
+        JOB_TYPE_LABEL[r.job.jobType] ?? r.job.jobType,
+        r.job.jobAddress,
+        RECEIPT_STATUS_LABEL[r.status] ?? r.status,
+        Number(r.totalAmount).toFixed(2),
+        r.payments.reduce((s, p) => s + Number(p.amount), 0).toFixed(2),
+        r.payments.map((p) => csvDate(p.paymentDate)).join(" "),
+      ])
+    );
+  };
 
   const handleIssueInvoice = async (jobId: string) => {
     setActionLoading(jobId);
@@ -153,16 +198,37 @@ export default function AccountantInvoicesPage() {
 
           {/* Section 2: All Issued Invoices / Receipts */}
           <div className="space-y-4">
-            <h2 className="text-lg font-semibold flex items-center gap-2">
-              <Receipt className="h-5 w-5 text-primary" />
-              รายการใบแจ้งหนี้และใบเสร็จทั้งหมดในระบบ
-            </h2>
+            <div className="flex flex-wrap items-center justify-between gap-2">
+              <h2 className="text-lg font-semibold flex items-center gap-2">
+                <Receipt className="h-5 w-5 text-primary" />
+                รายการใบแจ้งหนี้และใบเสร็จทั้งหมดในระบบ
+              </h2>
+              <div className="flex gap-2">
+                <Button asChild size="sm" variant="outline">
+                  <Link href="/accountant/receivables">ลูกหนี้ค้างชำระ</Link>
+                </Button>
+                <Button size="sm" variant="outline" onClick={exportCsv} disabled={receipts.length === 0}>
+                  <Download className="h-4 w-4" /> Export CSV
+                </Button>
+              </div>
+            </div>
 
-            {receipts.length === 0 ? (
-              <Card><CardContent className="py-12 text-center text-muted-foreground">ยังไม่มีรายการใบแจ้งหนี้ในระบบ</CardContent></Card>
+            <FilterBar
+              value={filters}
+              onChange={setFilters}
+              searchPlaceholder="ค้นหาชื่อลูกค้า ที่อยู่ หรือเลขที่"
+              statusOptions={Object.entries(RECEIPT_STATUS_LABEL).map(([value, label]) => ({ value, label }))}
+              jobTypeOptions={Object.entries(JOB_TYPE_LABEL).map(([value, label]) => ({ value, label }))}
+              dateLabel="วันที่ออก"
+            />
+
+            {listLoading ? (
+              <div className="flex justify-center py-10"><Loader2 className="h-6 w-6 animate-spin text-muted-foreground" /></div>
+            ) : receipts.length === 0 ? (
+              <Card><CardContent className="py-12 text-center text-muted-foreground">ไม่พบรายการใบแจ้งหนี้</CardContent></Card>
             ) : (
               <div className="space-y-3">
-                {receipts.map((rec) => (
+                {pageItems.map((rec) => (
                   <Card key={rec.id} className="shadow-sm">
                     <CardContent className="p-4 flex flex-col md:flex-row justify-between items-start md:items-center gap-4">
                       <div className="space-y-1">
@@ -173,7 +239,7 @@ export default function AccountantInvoicesPage() {
                           </Badge>
                         </div>
                         <p className="text-xs text-muted-foreground">ที่อยู่: {rec.job.jobAddress}</p>
-                        <p className="text-xs text-muted-foreground">วันที่ออก: {new Date(rec.createdAt).toLocaleDateString("th-TH")} | ประเภทงาน: {rec.job.jobType}</p>
+                        <p className="text-xs text-muted-foreground">วันที่ออก: {new Date(rec.createdAt).toLocaleDateString("th-TH")} | ประเภทงาน: {JOB_TYPE_LABEL[rec.job.jobType] ?? rec.job.jobType}</p>
                       </div>
                       <div className="flex items-center gap-4 w-full md:w-auto justify-between md:justify-end border-t md:border-t-0 pt-3 md:pt-0">
                         <div className="text-right">
@@ -189,6 +255,7 @@ export default function AccountantInvoicesPage() {
                     </CardContent>
                   </Card>
                 ))}
+                <Pagination {...pager} onPage={pager.setPage} />
               </div>
             )}
           </div>

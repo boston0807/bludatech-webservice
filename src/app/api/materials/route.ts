@@ -1,11 +1,24 @@
 // src/app/api/materials/route.ts
 import { NextRequest } from "next/server";
+import { z } from "zod";
 import { prisma } from "@/lib/prisma";
 import { verifyToken, AUTH_COOKIE_NAME } from "@/lib/auth";
 import { successResponse, errorResponse, unauthorizedResponse, forbiddenResponse } from "@/lib/api-response";
-import { NOT_ELEVATOR, isReservedMaterialName } from "@/lib/elevator-catalog";
-import { changeStock } from "@/lib/materials";
-import { createMaterialSchema } from "@/lib/validations/material";
+
+// price เป็น Decimal(10,2) → สูงสุด 99,999,999.99
+const createMaterialSchema = z.object({
+  materialName: z.string().trim().min(1, "กรุณากรอกชื่อวัสดุ").max(255, "ชื่อวัสดุยาวเกินไป"),
+  price: z.coerce
+    .number({ invalid_type_error: "กรุณากรอกราคาเป็นตัวเลข" })
+    .min(0, "ราคาต้องไม่ติดลบ")
+    .max(99_999_999.99, "ราคาสูงเกินไป"),
+  stockQuantity: z.coerce
+    .number({ invalid_type_error: "กรุณากรอกจำนวนเป็นตัวเลข" })
+    .int("จำนวนต้องเป็นจำนวนเต็ม")
+    .min(0, "จำนวนต้องไม่ติดลบ")
+    .max(1_000_000, "จำนวนมากเกินไป")
+    .default(0),
+});
 
 // GET /api/materials - รายการวัสดุทั้งหมด
 export async function GET(req: NextRequest) {
@@ -15,7 +28,6 @@ export async function GET(req: NextRequest) {
   if (!payload) return unauthorizedResponse();
 
   const materials = await prisma.material.findMany({
-    where: NOT_ELEVATOR, // แถวข้อมูลลิฟต์ไม่ใช่สินค้าในคลัง
     orderBy: { materialName: "asc" },
   });
   return successResponse(materials);
@@ -32,28 +44,24 @@ export async function POST(req: NextRequest) {
     return forbiddenResponse("เฉพาะพนักงานบัญชีหรือผู้ดูแลระบบที่สามารถเพิ่ม/สั่งซื้อวัสดุได้");
   }
 
-  const body = await req.json().catch(() => null);
-  const parsed = createMaterialSchema.safeParse(body ?? {});
+  const body = await req.json().catch(() => ({}));
+  // หน้าเว็บส่ง NaN เมื่อช่องว่าง → JSON เป็น null; ถือว่าไม่ได้กรอก
+  const parsed = createMaterialSchema.safeParse({
+    ...body,
+    price: body?.price ?? undefined,
+    stockQuantity: body?.stockQuantity ?? undefined,
+  });
   if (!parsed.success) {
     return errorResponse(parsed.error.errors[0].message, 422, parsed.error.flatten().fieldErrors);
   }
-  const { materialName, price, stockQuantity } = parsed.data;
-  if (isReservedMaterialName(materialName)) {
-    return errorResponse("ชื่อวัสดุต้องไม่ขึ้นต้นด้วย @elevator-", 422);
-  }
 
   try {
-    // สร้างด้วยยอด 0 แล้วรับยอดตั้งต้นผ่าน changeStock เพื่อให้มีแถวประวัติ INITIAL
-    const material = await prisma.$transaction(async (tx) => {
-      const created = await tx.material.create({ data: { materialName, price, stockQuantity: 0 } });
-      if (stockQuantity === 0) return created;
-      const { material } = await changeStock(tx, {
-        materialId: created.id,
-        change: stockQuantity,
-        reason: "INITIAL",
-        employeeId: payload.sub,
-      });
-      return material;
+    const material = await prisma.material.create({
+      data: {
+        materialName: parsed.data.materialName,
+        price: Math.round(parsed.data.price * 100) / 100,
+        stockQuantity: parsed.data.stockQuantity,
+      },
     });
     return successResponse(material, "เพิ่มวัสดุสำเร็จ");
   } catch (error) {
