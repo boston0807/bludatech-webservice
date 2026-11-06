@@ -2,7 +2,7 @@
 import { NextRequest } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { verifyToken, AUTH_COOKIE_NAME } from "@/lib/auth";
-import { successResponse, unauthorizedResponse, notFoundResponse } from "@/lib/api-response";
+import { successResponse, unauthorizedResponse, notFoundResponse, forbiddenResponse } from "@/lib/api-response";
 
 type Params = { params: Promise<{ id: string }> };
 
@@ -16,10 +16,11 @@ export async function GET(req: NextRequest, { params }: Params) {
   const { id } = await params;
   const workPlan = await prisma.workPlan.findUnique({
     where: { id },
-    include: { materials: { include: { material: true } } },
+    include: { materials: { include: { material: true } }, job: { select: { customerId: true } } },
   });
 
   if (!workPlan) return notFoundResponse("ไม่พบแผนงาน");
+  if (payload.role === "CUSTOMER" && workPlan.job.customerId !== payload.sub) return forbiddenResponse();
 
   let isReady = true;
   const itemsCheck = workPlan.materials.map((item) => {

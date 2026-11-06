@@ -22,6 +22,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { SAFETY_CHECKLIST } from "@/lib/safety-checklist";
+import { LocationPicker } from "@/components/location-picker";
 import {
   JOB_TYPE_LABEL,
   JOB_STATUS_LABEL,
@@ -303,7 +304,7 @@ export default function TechnicianWorkplansPage() {
               </div>
             )}
 
-            <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
               <div className="space-y-2">
                 <Label htmlFor="startDate">วันที่เริ่มต้น</Label>
                 <Input type="date" id="startDate" value={startDate} onChange={(e) => setStartDate(e.target.value)} />
@@ -312,11 +313,10 @@ export default function TechnicianWorkplansPage() {
                 <Label htmlFor="endDate">วันที่สิ้นสุด</Label>
                 <Input type="date" id="endDate" min={startDate} value={endDate} onChange={(e) => setEndDate(e.target.value)} />
               </div>
-              <div className="space-y-2">
-                <Label htmlFor="location">สถานที่ปฏิบัติงาน</Label>
-                <Input id="location" value={location} onChange={(e) => setLocation(e.target.value)} />
-              </div>
             </div>
+
+            {/* สถานที่ — เต็มความกว้างเพื่อให้แผนที่ใช้งานสะดวก (ค่าเริ่มต้น = ที่อยู่ในใบงาน) */}
+            <LocationPicker key={planJob.id} label="สถานที่ปฏิบัติงาน" value={location} onChange={setLocation} />
 
             {/* มอบหมายช่าง */}
             <div className="space-y-2">
@@ -536,7 +536,11 @@ export default function TechnicianWorkplansPage() {
             const Icon = JOB_TYPE_ICON[job.jobType];
             const plan = job.workPlan;
             const lastCheck = job.safetyChecks?.[0];
-            const canEditPlan = job.status === "APPROVE" && (!plan || plan.status === "DRAFT" || plan.status === "REJECTED");
+            // UC08 — เฉพาะหัวหน้าช่างจัดทำ/แก้ไขแผนงาน
+            const canEditPlan =
+              me?.role === "HEAD_TECHNICIAN" &&
+              job.status === "APPROVE" &&
+              (!plan || plan.status === "DRAFT" || plan.status === "REJECTED");
             const planShortages = plan?.materials.filter((m) => shortageById.has(m.materialId)) ?? [];
             const assigned = isAssigned(job);
             return (

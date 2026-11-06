@@ -3,7 +3,7 @@
 
 import { useState } from "react";
 import { useRouter } from "next/navigation";
-import { useForm } from "react-hook-form";
+import { Controller, useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import Link from "next/link";
 import { Loader2, Building2, CheckCircle2 } from "lucide-react";
@@ -12,6 +12,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from "@/components/ui/card";
 import { registerSchema, type RegisterInput } from "@/lib/validations/auth";
+import { LocationPicker } from "@/components/location-picker";
 
 export default function RegisterPage() {
   const router = useRouter();
@@ -20,10 +21,12 @@ export default function RegisterPage() {
 
   const {
     register,
+    control,
     handleSubmit,
     formState: { errors, isSubmitting },
   } = useForm<RegisterInput>({
     resolver: zodResolver(registerSchema),
+    defaultValues: { customerAddress: "" },
   });
 
   const onSubmit = async (data: RegisterInput) => {
@@ -152,9 +155,19 @@ export default function RegisterPage() {
                 </div>
 
                 <div className="space-y-2">
-                  <Label htmlFor="customerAddress">ที่อยู่ <span className="text-destructive">*</span></Label>
-                  <Input id="customerAddress" placeholder="กรอกที่อยู่" {...register("customerAddress")} />
-                  {errors.customerAddress && <p className="text-destructive text-xs">{errors.customerAddress.message}</p>}
+                  <Controller
+                    name="customerAddress"
+                    control={control}
+                    render={({ field }) => (
+                      <LocationPicker
+                        label="ที่อยู่"
+                        required
+                        value={field.value ?? ""}
+                        onChange={field.onChange}
+                        error={errors.customerAddress?.message}
+                      />
+                    )}
+                  />
                 </div>
               </div>
             </div>

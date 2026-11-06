@@ -3,6 +3,7 @@ import { NextRequest } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { verifyToken, AUTH_COOKIE_NAME } from "@/lib/auth";
 import {
+  ApiError,
   successResponse,
   errorResponse,
   unauthorizedResponse,
@@ -53,7 +54,7 @@ export async function PATCH(req: NextRequest, { params }: Params) {
       return errorResponse("ใบเสนอราคานี้ไม่สามารถดำเนินการได้แล้ว", 409);
     }
 
-    const body = await req.json();
+    const body = await req.json().catch(() => ({}));
     const parsed = quotationActionSchema.safeParse(body);
     if (!parsed.success) {
       return errorResponse("ข้อมูลไม่ถูกต้อง", 422, parsed.error.flatten().fieldErrors);
@@ -61,48 +62,36 @@ export async function PATCH(req: NextRequest, { params }: Params) {
 
     const { action, rejectNote } = parsed.data;
 
-    let updatedQuotation;
+    // APPROVE: quotation → APPROVED, job → APPROVE
+    // REJECT:  quotation → REJECTED, job → REQUEST_EDIT (ให้ช่างสำรวจ/ประเมินใหม่)
+    // CANCEL:  quotation → REJECTED, job → CANCELLED
+    const next = {
+      APPROVE: { quotation: { status: "APPROVED" as const }, job: "APPROVE" as const },
+      REJECT: { quotation: { status: "REJECTED" as const, rejectNote: rejectNote?.trim() ?? null }, job: "REQUEST_EDIT" as const },
+      CANCEL: { quotation: { status: "REJECTED" as const, rejectNote: "ลูกค้ายกเลิก" }, job: "CANCELLED" as const },
+    }[action];
 
-    if (action === "APPROVE") {
-      // APPROVE: quotation → APPROVED, job → APPROVE
-      [updatedQuotation] = await prisma.$transaction([
-        prisma.quotation.update({
-          where: { id: quotationId },
-          data: { status: "APPROVED" },
-        }),
-        prisma.job.update({
-          where: { id: quotation.jobId },
-          data: { status: "APPROVE" },
-        }),
-      ]);
-    } else if (action === "REJECT") {
-      // REJECT: quotation → REJECTED, job → REQUEST_EDIT, บันทึก rejectNote
-      [updatedQuotation] = await prisma.$transaction([
-        prisma.quotation.update({
-          where: { id: quotationId },
-          data: { status: "REJECTED", rejectNote: rejectNote ?? null },
-        }),
-        prisma.job.update({
-          where: { id: quotation.jobId },
-          data: { status: "REQUEST_EDIT" },
-        }),
-      ]);
-    } else {
-      // CANCEL: job → CANCELLED (quotation ยังคง PENDING)
-      [updatedQuotation] = await prisma.$transaction([
-        prisma.quotation.update({
-          where: { id: quotationId },
-          data: { status: "REJECTED", rejectNote: "ลูกค้ายกเลิก" },
-        }),
-        prisma.job.update({
-          where: { id: quotation.jobId },
-          data: { status: "CANCELLED" },
-        }),
-      ]);
-    }
+    // อัปเดตแบบมีเงื่อนไขใน transaction เดียว กันกดซ้ำ/กดพร้อมกันหลายแท็บ
+    // (เดิมตรวจสถานะก่อนแล้วอัปเดตแบบไม่มีเงื่อนไข → อนุมัติแล้วยังยกเลิกซ้ำได้)
+    const updatedQuotation = await prisma.$transaction(async (tx) => {
+      const changed = await tx.quotation.updateMany({
+        where: { id: quotationId, status: "PENDING" },
+        data: next.quotation,
+      });
+      if (changed.count === 0) throw new ApiError("ใบเสนอราคานี้ไม่สามารถดำเนินการได้แล้ว", 409);
+
+      const moved = await tx.job.updateMany({
+        where: { id: quotation.jobId, status: "QUOTED" },
+        data: { status: next.job },
+      });
+      if (moved.count === 0) throw new ApiError("ใบงานไม่อยู่ในสถานะรออนุมัติใบเสนอราคา", 409);
+
+      return tx.quotation.findUnique({ where: { id: quotationId } });
+    });
 
     return successResponse(updatedQuotation);
   } catch (error) {
+    if (error instanceof ApiError) return errorResponse(error.message, error.status);
     console.error("[QUOTATION_ACTION_ERROR]", error);
     return errorResponse("เกิดข้อผิดพลาด", 500);
   }

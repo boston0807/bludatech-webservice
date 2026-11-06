@@ -39,7 +39,7 @@ export function TopNav({ user }: Props) {
   const role = user.role as Role;
 
   return (
-    <header className="h-14 border-b bg-white flex items-center justify-between px-6 shrink-0">
+    <header className="h-14 border-b bg-white flex items-center justify-between px-6 shrink-0 print:hidden">
       <div />
       <div className="flex items-center gap-3">
         <div className="flex items-center gap-2 text-sm">

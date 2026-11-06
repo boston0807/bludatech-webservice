@@ -4,6 +4,7 @@ import { prisma } from "@/lib/prisma";
 import { verifyToken, AUTH_COOKIE_NAME } from "@/lib/auth";
 import { successResponse, errorResponse, unauthorizedResponse, forbiddenResponse, notFoundResponse } from "@/lib/api-response";
 import { createExpensesSchema } from "@/lib/validations/survey";
+import { EXPENSE_EDITABLE_STATUSES, EXPENSE_LOCKED_MESSAGE } from "@/lib/expenses";
 
 type Params = { params: Promise<{ id: string }> };
 
@@ -15,6 +16,11 @@ export async function GET(req: NextRequest, { params }: Params) {
   if (!payload) return unauthorizedResponse();
 
   const { id: jobId } = await params;
+
+  const job = await prisma.job.findUnique({ where: { id: jobId }, select: { customerId: true } });
+  if (!job) return notFoundResponse("ไม่พบใบงาน");
+  // ลูกค้าเห็นเฉพาะรายการของใบงานตัวเอง
+  if (payload.role === "CUSTOMER" && job.customerId !== payload.sub) return forbiddenResponse();
 
   const expenses = await prisma.expense.findMany({
     where: { jobId },
@@ -37,8 +43,9 @@ export async function POST(req: NextRequest, { params }: Params) {
 
   const job = await prisma.job.findUnique({ where: { id: jobId } });
   if (!job) return notFoundResponse("ไม่พบใบงาน");
+  if (!EXPENSE_EDITABLE_STATUSES.includes(job.status)) return errorResponse(EXPENSE_LOCKED_MESSAGE, 422);
 
-  const body = await req.json();
+  const body = await req.json().catch(() => ({}));
   const parsed = createExpensesSchema.safeParse({ ...body, jobId });
   if (!parsed.success) {
     return errorResponse("ข้อมูลไม่ถูกต้อง", 422, parsed.error.flatten().fieldErrors);

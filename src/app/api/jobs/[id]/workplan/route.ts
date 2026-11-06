@@ -21,8 +21,9 @@ type Params = { params: Promise<{ id: string }> };
 export async function POST(req: NextRequest, { params }: Params) {
   const auth = await getAuth(req);
   if (!auth) return unauthorizedResponse();
-  if (auth.role !== "HEAD_TECHNICIAN" && auth.role !== "TECHNICIAN" && auth.role !== "ADMIN") {
-    return forbiddenResponse("เฉพาะหัวหน้าช่างหรือช่างที่สามารถทำแผนงานได้");
+  // UC08 actor = หัวหน้าช่าง (ธุรการทำแทนได้) — ช่างทั่วไปไม่มีสิทธิ์จัดแผน/มอบหมายงาน
+  if (auth.role !== "HEAD_TECHNICIAN" && auth.role !== "ADMIN") {
+    return forbiddenResponse("เฉพาะหัวหน้าช่างที่สามารถทำแผนงานและมอบหมายช่างได้");
   }
 
   const { id: jobId } = await params;

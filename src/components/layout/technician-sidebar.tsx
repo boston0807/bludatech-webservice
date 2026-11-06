@@ -3,7 +3,7 @@
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { Building2, LayoutDashboard, Briefcase, ClipboardCheck, Package, CalendarDays } from "lucide-react";
+import { Building2, LayoutDashboard, Briefcase, ClipboardCheck, Package, CalendarDays, KeyRound } from "lucide-react";
 import { cn } from "@/lib/utils";
 
 const NAV_ITEMS = [
@@ -12,13 +12,14 @@ const NAV_ITEMS = [
   { href: "/technician/schedule", label: "ตารางงาน", icon: CalendarDays },
   { href: "/technician/workplans", label: "แผนงาน", icon: ClipboardCheck },
   { href: "/technician/materials", label: "ตรวจสต็อก", icon: Package },
+  { href: "/technician/account", label: "เปลี่ยนรหัสผ่าน", icon: KeyRound },
 ];
 
 export function TechnicianSidebar() {
   const pathname = usePathname();
 
   return (
-    <aside className="w-60 border-r bg-white flex flex-col shrink-0">
+    <aside className="w-60 border-r bg-white flex flex-col shrink-0 print:hidden">
       <div className="h-14 flex items-center gap-2 px-5 border-b">
         <Building2 className="h-6 w-6 text-primary" />
         <span className="font-bold text-base leading-tight">Elevator<br />Service</span>

@@ -10,6 +10,8 @@ import { Badge } from "@/components/ui/badge";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { PrintableDocument, PrintButton } from "@/components/documents/printable-document";
+import { isHttpUrl } from "@/lib/validations/payment";
 
 type Payment = {
   id: string;
@@ -30,8 +32,16 @@ type Receipt = {
   job?: {
     jobType?: string;
     jobAddress?: string;
-    customer?: { customerName?: string; customerPhone?: string; customerAddress?: string };
+    jobWage?: string;
+    customer?: {
+      customerName?: string;
+      customerPhone?: string;
+      customerAddress?: string;
+      customerEmail?: string | null;
+      taxId?: string | null;
+    };
     quotation?: { totalAmount?: string };
+    expenses?: { expenseName: string; quantity: number; price: string }[];
   };
 };
 
@@ -75,6 +85,10 @@ export default function CustomerInvoicePage({ params }: { params: Promise<{ id: 
   const handlePayment = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!receipt) return;
+    if (slipUrl.trim() && !isHttpUrl(slipUrl.trim())) {
+      setErrorMsg("ลิงก์สลิปต้องขึ้นต้นด้วย http:// หรือ https://");
+      return;
+    }
 
     setSubmitting(true);
     setErrorMsg(null);
@@ -87,7 +101,7 @@ export default function CustomerInvoicePage({ params }: { params: Promise<{ id: 
         body: JSON.stringify({
           amount: parseFloat(receipt.totalAmount),
           paymentMethod,
-          slipUrl: slipUrl || undefined,
+          slipUrl: slipUrl.trim() || undefined,
         }),
       });
       const data = await res.json();
@@ -123,15 +137,43 @@ export default function CustomerInvoicePage({ params }: { params: Promise<{ id: 
     );
   }
 
+  const paid = receipt.status === "PAID";
+
   return (
-    <div className="max-w-2xl mx-auto space-y-6">
+    <>
+    <PrintableDocument
+      kind={paid ? "RECEIPT" : "INVOICE"}
+      docNo={`${paid ? "RC" : "INV"}-${receipt.id.slice(0, 10).toUpperCase()}`}
+      issuedAt={paid && receipt.payments[0] ? receipt.payments[0].paymentDate : receipt.createdAt}
+      jobId={receipt.jobId}
+      jobType={receipt.job?.jobType ?? ""}
+      jobAddress={receipt.job?.jobAddress ?? "-"}
+      customer={{
+        customerName: receipt.job?.customer?.customerName ?? "-",
+        customerAddress: receipt.job?.customer?.customerAddress,
+        customerPhone: receipt.job?.customer?.customerPhone,
+        customerEmail: receipt.job?.customer?.customerEmail,
+        taxId: receipt.job?.customer?.taxId,
+      }}
+      expenses={receipt.job?.expenses ?? []}
+      jobWage={receipt.job?.jobWage ?? 0}
+      totalAmount={receipt.totalAmount}
+      payments={receipt.payments}
+      issuedBy={receipt.employee?.employeeName}
+    />
+    <div className="max-w-2xl mx-auto space-y-6 print:hidden">
       <div>
         <Link href={`/jobs/${jobId}`} className="inline-flex items-center text-sm text-muted-foreground hover:text-foreground mb-3">
           <ChevronLeft className="h-4 w-4" />
           กลับไปหน้าใบงาน
         </Link>
-        <h1 className="text-2xl font-bold tracking-tight">ใบแจ้งหนี้ / ใบเสร็จรับเงิน</h1>
-        <p className="text-muted-foreground text-sm">รายละเอียดการชำระเงินค่าบริการลิฟต์</p>
+        <div className="flex items-start justify-between gap-3">
+          <div>
+            <h1 className="text-2xl font-bold tracking-tight">ใบแจ้งหนี้ / ใบเสร็จรับเงิน</h1>
+            <p className="text-muted-foreground text-sm">รายละเอียดการชำระเงินค่าบริการลิฟต์</p>
+          </div>
+          <PrintButton label={paid ? "พิมพ์ใบเสร็จ" : "พิมพ์ใบแจ้งหนี้"} />
+        </div>
       </div>
 
       {successMsg && (
@@ -215,10 +257,11 @@ export default function CustomerInvoicePage({ params }: { params: Promise<{ id: 
               </div>
 
               <div className="space-y-2">
-                <Label htmlFor="slipUrl">ลิงก์หลักฐานการโอนเงิน (Slip URL / หมายเหตุ)</Label>
+                <Label htmlFor="slipUrl">ลิงก์หลักฐานการโอนเงิน (ไม่บังคับ)</Label>
                 <Input
                   id="slipUrl"
-                  placeholder="เช่น https://example.com/slip.jpg หรือ โอนผ่าน SCB 12:34 น."
+                  type="url"
+                  placeholder="เช่น https://drive.google.com/…/slip.jpg"
                   value={slipUrl}
                   onChange={(e) => setSlipUrl(e.target.value)}
                 />
@@ -233,5 +276,6 @@ export default function CustomerInvoicePage({ params }: { params: Promise<{ id: 
         </Card>
       )}
     </div>
+    </>
   );
 }

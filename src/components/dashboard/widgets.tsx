@@ -4,7 +4,7 @@
 
 import { useEffect, useState } from "react";
 import Link from "next/link";
-import { Loader2, CalendarClock, CalendarDays, PackageX, Receipt, AlertTriangle } from "lucide-react";
+import { Loader2, CalendarClock, CalendarDays, PackageX, Receipt, AlertTriangle, PackageSearch, Wallet } from "lucide-react";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -200,12 +200,18 @@ export function TechnicianTodayPanel() {
 
 /** บัญชี: ใบแจ้งหนี้ร่างรอตรวจสอบ + วัสดุที่ต้องสั่งซื้อ */
 export function AccountantAlerts() {
-  const invoices = useApi<{ status: string }[]>("/api/invoices");
-  const shortages = useApi<{ shortages: { id: string }[] }>("/api/materials/shortages");
+  const invoices = useApi<{ status: string; totalAmount: string | number; payments: { amount: string | number }[] }[]>("/api/invoices");
+  const shortages = useApi<StockData>("/api/materials/shortages");
   const drafts = (invoices.data ?? []).filter((r) => r.status === "DRAFT").length;
+  const unpaid = (invoices.data ?? []).filter((r) => r.status === "UNPAID");
+  const unpaidAmount = unpaid.reduce(
+    (s, r) => s + Math.max(0, Number(r.totalAmount) - r.payments.reduce((a, p) => a + Number(p.amount), 0)),
+    0
+  );
   const short = shortages.data?.shortages.length ?? 0;
+  const low = shortages.data?.lowStock.length ?? 0;
   return (
-    <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+    <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
       <Link href="/accountant/invoices">
         <Card className={`hover:shadow-md transition-shadow ${drafts ? "border-amber-400" : ""}`}>
           <CardContent className="pt-6 flex items-center gap-3">
@@ -223,11 +229,70 @@ export function AccountantAlerts() {
             {short ? <PackageX className="h-6 w-6 text-amber-600" /> : <AlertTriangle className="h-6 w-6 text-muted-foreground" />}
             <div>
               <p className="font-medium">วัสดุที่ต้องสั่งซื้อ: {shortages.loading ? "…" : short} รายการ</p>
-              <p className="text-xs text-muted-foreground">จองในแผนงานมากกว่าของในคลัง</p>
+              <p className="text-xs text-muted-foreground">
+                จองในแผนงานมากกว่าของในคลัง
+                {low > 0 && (
+                  <>
+                    {" · "}
+                    <Badge variant="warning" className="ml-0.5">ใกล้หมด {low}</Badge>
+                  </>
+                )}
+              </p>
+            </div>
+          </CardContent>
+        </Card>
+      </Link>
+      <Link href="/accountant/receivables">
+        <Card className={`hover:shadow-md transition-shadow ${unpaid.length ? "border-amber-400" : ""}`}>
+          <CardContent className="pt-6 flex items-center gap-3">
+            <Wallet className="h-6 w-6 text-primary" />
+            <div>
+              <p className="font-medium">ค้างชำระ: {invoices.loading ? "…" : unpaid.length} ใบ</p>
+              <p className="text-xs text-muted-foreground">
+                ยอดคงค้าง {unpaidAmount.toLocaleString("th-TH", { minimumFractionDigits: 2 })} บาท
+              </p>
             </div>
           </CardContent>
         </Card>
       </Link>
     </div>
+  );
+}
+
+type StockRow = { id: string; materialName: string; shortageQty?: number; availableQty?: number };
+type StockData = { shortages: StockRow[]; lowStock: StockRow[]; threshold: number };
+
+/** ช่าง/หัวหน้าช่าง: วัสดุไม่พอสำหรับแผนงาน และวัสดุใกล้หมด (เกณฑ์ตั้งได้ด้วย env LOW_STOCK_THRESHOLD) */
+export function StockAlertsPanel({ href = "/technician/materials" }: { href?: string }) {
+  const { data, loading } = useApi<StockData>("/api/materials/shortages");
+  if (loading || !data) return null;
+  const { shortages, lowStock, threshold } = data;
+  if (shortages.length === 0 && lowStock.length === 0) return null;
+  return (
+    <Card className={shortages.length ? "border-destructive/60" : "border-amber-400"}>
+      <CardHeader className="pb-2">
+        <CardTitle className="text-base flex items-center gap-2">
+          <PackageSearch className="h-5 w-5 text-primary" /> แจ้งเตือนสต็อกวัสดุ
+          {shortages.length > 0 && <Badge variant="destructive">ไม่พอ {shortages.length}</Badge>}
+          {lowStock.length > 0 && <Badge variant="warning">ใกล้หมด {lowStock.length}</Badge>}
+        </CardTitle>
+        <CardDescription>ใกล้หมด = คงเหลือหลังหักยอดจองไม่เกิน {threshold} ชิ้น</CardDescription>
+      </CardHeader>
+      <CardContent className="space-y-1 text-sm">
+        {shortages.slice(0, 5).map((m) => (
+          <p key={m.id} className="text-destructive">
+            {m.materialName} — ขาด {m.shortageQty} ชิ้น
+          </p>
+        ))}
+        {lowStock.slice(0, 5).map((m) => (
+          <p key={m.id} className="text-amber-700">
+            {m.materialName} — เหลือใช้ได้ {m.availableQty} ชิ้น
+          </p>
+        ))}
+        <Link href={href} className="text-xs text-primary hover:underline">
+          ดูสต็อกทั้งหมด →
+        </Link>
+      </CardContent>
+    </Card>
   );
 }

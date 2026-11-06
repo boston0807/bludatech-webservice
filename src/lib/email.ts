@@ -22,7 +22,7 @@ function createTransport() {
 }
 
 const FROM = process.env.SMTP_FROM ?? "Bludatech Service <no-reply@example.com>";
-const APP_URL = process.env.NEXT_PUBLIC_APP_URL ?? "http://localhost:3000";
+export const APP_URL = process.env.NEXT_PUBLIC_APP_URL ?? "http://localhost:3000";
 
 // ─────────────────────────────────────────────
 // Shared mail sender
@@ -61,7 +61,7 @@ function sendMail(to: string, subject: string, html: string): Promise<void> {
 // Email template base
 // ─────────────────────────────────────────────
 
-function baseTemplate(title: string, body: string): string {
+export function baseTemplate(title: string, body: string): string {
   return `
 <!DOCTYPE html>
 <html lang="th">
@@ -105,11 +105,11 @@ function baseTemplate(title: string, body: string): string {
 </html>`;
 }
 
-function btn(href: string, label: string): string {
+export function btn(href: string, label: string): string {
   return `<a href="${href}" style="display:inline-block;margin-top:20px;padding:12px 24px;background:#1d4ed8;color:#ffffff;text-decoration:none;border-radius:6px;font-weight:600;font-size:14px;">${label}</a>`;
 }
 
-function infoRow(label: string, value: string): string {
+export function infoRow(label: string, value: string): string {
   return `<tr>
     <td style="padding:6px 0;color:#6b7280;font-size:14px;width:160px;">${label}</td>
     <td style="padding:6px 0;color:#111827;font-size:14px;font-weight:600;">${value}</td>
