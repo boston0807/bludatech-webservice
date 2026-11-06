@@ -8,11 +8,6 @@ export const createWorkPlanSchema = z
     location: z.string().optional(),
     startDate: z.string().min(1, "กรุณาระบุวันที่เริ่มต้น"),
     endDate: z.string().optional(),
-    // ช่างผู้ปฏิบัติงาน — ใช้ตรวจตารางงานชนกันและให้ช่างเห็นงานของตัวเอง
-    technicianIds: z
-      .array(z.string().min(1))
-      .min(1, "กรุณาเลือกช่างผู้ปฏิบัติงานอย่างน้อย 1 คน")
-      .max(20),
     materials: z
       .array(
         z.object({

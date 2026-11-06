@@ -4,21 +4,11 @@
 import type { ReactNode } from "react";
 import { Gauge } from "lucide-react";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
-import { JOB_TYPE_LABEL, ROLE_LABEL, baht } from "@/lib/labels";
+import { JOB_TYPE_LABEL, baht } from "@/lib/labels";
 
 export type Kpi = {
   jobCount: number;
   stages: { key: string; label: string; avgDays: number | null; sample: number }[];
-  safety: { testedJobs: number; firstPassJobs: number; firstPassRate: number | null; totalChecks: number };
-  technicians: {
-    employeeId: string;
-    employeeName: string;
-    role: string;
-    plans: number;
-    workDays: number;
-    activePlans: number;
-    completedPlans: number;
-  }[];
   revenueByType: { jobType: string; payments: number; amount: number }[];
   revenueTotal: number;
 };
@@ -49,14 +39,7 @@ export function KpiSection({ kpi, action }: { kpi: Kpi; action?: ReactNode }) {
         </CardDescription>
       </CardHeader>
       <CardContent className="space-y-6">
-        <div className="grid gap-3 sm:grid-cols-3">
-          <div className="rounded-lg border p-3">
-            <p className="text-xs text-muted-foreground">ผ่านทดสอบความปลอดภัยในครั้งแรก</p>
-            <p className="text-2xl font-bold">{kpi.safety.firstPassRate === null ? "-" : `${kpi.safety.firstPassRate}%`}</p>
-            <p className="text-xs text-muted-foreground">
-              {num(kpi.safety.firstPassJobs)} จาก {num(kpi.safety.testedJobs)} งาน · ทดสอบรวม {num(kpi.safety.totalChecks)} ครั้ง
-            </p>
-          </div>
+        <div className="grid gap-3 sm:grid-cols-2">
           <div className="rounded-lg border p-3">
             <p className="text-xs text-muted-foreground">ระยะเวลาเฉลี่ยทั้งกระบวนการ</p>
             <p className="text-2xl font-bold">{overall?.avgDays == null ? "-" : `${overall.avgDays} วัน`}</p>
@@ -102,39 +85,7 @@ export function KpiSection({ kpi, action }: { kpi: Kpi; action?: ReactNode }) {
           </table>
         </div>
 
-        <div className="grid gap-6 lg:grid-cols-2">
-          <div>
-            <p className="text-sm font-medium mb-2">ภาระงานช่าง (แผนงานที่เริ่มในช่วงนี้)</p>
-            {kpi.technicians.length === 0 ? (
-              <p className="text-sm text-muted-foreground">ไม่มีแผนงานในช่วงนี้</p>
-            ) : (
-              <table className="w-full text-sm">
-                <thead>
-                  <tr>
-                    <th className={th}>ช่าง</th>
-                    <th className={thR}>แผนงาน</th>
-                    <th className={thR}>วันทำงาน</th>
-                    <th className={thR}>ค้าง / เสร็จ</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {kpi.technicians.map((t) => (
-                    <tr key={t.employeeId}>
-                      <td className={td}>
-                        {t.employeeName} <span className="text-xs text-muted-foreground">{ROLE_LABEL[t.role]}</span>
-                      </td>
-                      <td className={tdR}>{num(t.plans)}</td>
-                      <td className={tdR}>{num(t.workDays)}</td>
-                      <td className={tdR}>
-                        {num(t.activePlans)} / {num(t.completedPlans)}
-                      </td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            )}
-          </div>
-          <div>
+        <div>
             <p className="text-sm font-medium mb-2">รายได้รับชำระแยกตามประเภทงาน</p>
             <table className="w-full text-sm">
               <thead>
@@ -156,7 +107,6 @@ export function KpiSection({ kpi, action }: { kpi: Kpi; action?: ReactNode }) {
                 ))}
               </tbody>
             </table>
-          </div>
         </div>
       </CardContent>
     </Card>

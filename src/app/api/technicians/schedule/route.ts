@@ -1,7 +1,5 @@
 // src/app/api/technicians/schedule/route.ts
-// ตารางงานช่าง (แก้ปัญหาช่างลืมนัด / งานซ้อน)
-//   ช่าง        → เห็นเฉพาะงานที่ตัวเองได้รับมอบหมาย
-//   หัวหน้าช่าง/แอดมิน → เห็นของทุกคน (?mine=1 ดูเฉพาะของตัวเอง)
+// ตารางงานช่าง (แก้ปัญหาช่างลืมนัด / งานซ้อน) — แสดงแผนงานทั้งหมดที่ยังดำเนินการอยู่ตามช่วงวันที่
 import { NextRequest } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { getAuth, hasRole } from "@/lib/api-auth";
@@ -14,7 +12,6 @@ export async function GET(req: NextRequest) {
   if (!hasRole(auth, "ADMIN", "TECHNICIAN", "HEAD_TECHNICIAN")) return forbiddenResponse();
 
   const { searchParams } = new URL(req.url);
-  const onlyMine = auth.role === "TECHNICIAN" || searchParams.get("mine") === "1";
   const includePast = searchParams.get("past") === "1";
   const todayKey = bangkokDayKey(new Date());
 
@@ -22,11 +19,9 @@ export async function GET(req: NextRequest) {
     where: {
       status: { not: "REJECTED" },
       job: { status: { in: ["APPROVE", "PLAN_APPROVED", "IN_PROGRESS", "WAITING_ACCEPTANCE"] } },
-      ...(onlyMine ? { technicians: { some: { employeeId: auth.sub } } } : {}),
     },
     orderBy: { startDate: "asc" },
     include: {
-      technicians: { include: { employee: { select: { id: true, employeeName: true, role: true } } } },
       materials: { include: { material: { select: { materialName: true } } } },
       job: {
         select: {
@@ -52,7 +47,6 @@ export async function GET(req: NextRequest) {
         endDate: p.endDate,
         location: p.location ?? p.job.jobAddress,
         job: p.job,
-        technicians: p.technicians.map((t) => t.employee),
         materials: p.materials.map((m) => ({ materialName: m.material.materialName, quantity: m.quantity })),
         isToday: startKey <= todayKey && todayKey <= endKey,
         isOverdue: endKey < todayKey && (p.job.status === "PLAN_APPROVED" || p.job.status === "IN_PROGRESS"),
@@ -61,5 +55,5 @@ export async function GET(req: NextRequest) {
     })
     .filter((i) => includePast || !i.isPast || i.isOverdue || i.job.status === "IN_PROGRESS");
 
-  return successResponse({ onlyMine, today: todayKey, items });
+  return successResponse({ today: todayKey, items });
 }

@@ -154,7 +154,6 @@ async function buildKpi(range: { from: Date; to: Date }) {
       surveys: { select: { surveyDate: true }, orderBy: { surveyDate: "asc" }, take: 1 },
       quotation: { select: { status: true, createdAt: true, updatedAt: true } },
       workPlan: { select: { status: true, createdAt: true, updatedAt: true, startDate: true } },
-      safetyChecks: { select: { passed: true, checkedAt: true }, orderBy: { checkedAt: "asc" } },
       receipt: {
         select: {
           createdAt: true,
@@ -196,11 +195,6 @@ async function buildKpi(range: { from: Date; to: Date }) {
       ),
     },
     {
-      key: "start_to_safety_pass",
-      label: "เริ่มงาน → ผ่านทดสอบความปลอดภัย",
-      ...avgDays(jobs.map((j) => [j.workPlan?.startDate, j.safetyChecks.find((c) => c.passed)?.checkedAt])),
-    },
-    {
       key: "invoice_to_payment",
       label: "ออกใบแจ้งหนี้ → ชำระเงิน",
       ...avgDays(jobs.map((j) => [j.receipt?.createdAt, j.receipt?.payments[0]?.paymentDate])),
@@ -211,49 +205,6 @@ async function buildKpi(range: { from: Date; to: Date }) {
       ...avgDays(jobs.map((j) => [j.requestDate, j.receipt?.payments[0]?.paymentDate])),
     },
   ];
-
-  // อัตราผ่านทดสอบความปลอดภัยในครั้งแรก
-  const tested = jobs.filter((j) => j.safetyChecks.length > 0);
-  const firstPass = tested.filter((j) => j.safetyChecks[0].passed).length;
-  const safety = {
-    testedJobs: tested.length,
-    firstPassJobs: firstPass,
-    firstPassRate: tested.length ? round2((firstPass / tested.length) * 100) : null,
-    totalChecks: tested.reduce((s, j) => s + j.safetyChecks.length, 0),
-  };
-
-  // ภาระงานช่าง: แผนงานที่เริ่มในช่วงที่เลือก (ไม่นับแผนที่ถูกตีกลับ)
-  const assignments = await prisma.workPlanTechnician.findMany({
-    where: {
-      workPlan: { status: { not: "REJECTED" }, startDate: { gte: range.from, lte: range.to } },
-    },
-    select: {
-      employee: { select: { id: true, employeeName: true, role: true } },
-      workPlan: { select: { startDate: true, endDate: true, job: { select: { status: true } } } },
-    },
-  });
-  const byTech = new Map<
-    string,
-    { employeeId: string; employeeName: string; role: string; plans: number; workDays: number; activePlans: number; completedPlans: number }
-  >();
-  for (const a of assignments) {
-    const row = byTech.get(a.employee.id) ?? {
-      employeeId: a.employee.id,
-      employeeName: a.employee.employeeName,
-      role: a.employee.role,
-      plans: 0,
-      workDays: 0,
-      activePlans: 0,
-      completedPlans: 0,
-    };
-    row.plans += 1;
-    row.workDays += Math.max(1, Math.round((a.workPlan.endDate.getTime() - a.workPlan.startDate.getTime()) / DAY_MS) + 1);
-    const st = a.workPlan.job.status;
-    if (["APPROVE", "PLAN_APPROVED", "IN_PROGRESS", "WAITING_ACCEPTANCE"].includes(st)) row.activePlans += 1;
-    if (["ACCEPTED", "PAID", "COMPLETED"].includes(st)) row.completedPlans += 1;
-    byTech.set(a.employee.id, row);
-  }
-  const technicians = [...byTech.values()].sort((a, b) => b.workDays - a.workDays);
 
   // รายได้ที่รับชำระจริงในช่วงที่เลือก แยกตามประเภทงาน (ตามวันที่ชำระ)
   const payments = await prisma.payment.findMany({
@@ -268,8 +219,6 @@ async function buildKpi(range: { from: Date; to: Date }) {
   return {
     jobCount: jobs.length,
     stages,
-    safety,
-    technicians,
     revenueByType,
     revenueTotal: round2(revenueByType.reduce((s, r) => s + r.amount, 0)),
   };

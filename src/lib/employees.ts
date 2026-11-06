@@ -6,5 +6,5 @@ export const EMPLOYEE_SELECT = {
   role: true,
   createdAt: true,
   updatedAt: true,
-  _count: { select: { planAssignments: true, surveys: true } },
+  _count: { select: { surveys: true } },
 } as const;

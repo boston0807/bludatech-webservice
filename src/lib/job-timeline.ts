@@ -15,7 +15,6 @@ export type TimelineJob = {
     updatedAt?: string;
     rejectNote?: string | null;
   } | null;
-  safetyChecks?: { passed: boolean; checkedAt: string }[];
   receipt?: {
     status: string;
     createdAt?: string;
@@ -85,7 +84,6 @@ export function buildSteps(job: TimelineJob): Step[] {
   const currentKey = STATUS_TO_STEP[job.status] ?? job.status;
   const currentIdx = ORDER.indexOf(currentKey);
   const surveys = byDate(job.surveys, "surveyDate");
-  const checks = byDate(job.safetyChecks, "checkedAt");
   const payments = byDate(job.receipt?.payments, "paymentDate");
   const q = job.quotation;
   const plan = job.workPlan;
@@ -97,7 +95,7 @@ export function buildSteps(job: TimelineJob): Step[] {
     APPROVE: q?.status === "APPROVED" ? q.updatedAt ?? null : null,
     PLAN_APPROVED: plan && PLAN_APPROVED_STATES.includes(plan.status) ? plan.updatedAt ?? null : null,
     IN_PROGRESS: plan && WORK_STARTED_STATUSES.includes(job.status) ? plan.startDate : null,
-    WAITING_ACCEPTANCE: [...checks].reverse().find((c) => c.passed)?.checkedAt ?? null,
+    WAITING_ACCEPTANCE: null, // ผลทดสอบความปลอดภัยเก็บเป็นข้อความใน job_note ไม่มีวันที่แยก
     ACCEPTED: job.receipt?.createdAt ?? null,
     PAID: payments[0]?.paymentDate ?? null,
     COMPLETED: null,
@@ -156,14 +154,6 @@ export function buildEvents(job: TimelineJob): TimelineEvent[] {
         tone: started ? "default" : "scheduled",
       });
     }
-  }
-
-  for (const c of job.safetyChecks ?? []) {
-    events.push({
-      date: c.checkedAt,
-      title: c.passed ? "ผ่านการทดสอบความปลอดภัย" : "ทดสอบความปลอดภัยไม่ผ่าน (กำลังแก้ไข)",
-      tone: c.passed ? "success" : "danger",
-    });
   }
 
   if (job.reworkNote && job.status === "IN_PROGRESS") {

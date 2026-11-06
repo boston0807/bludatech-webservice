@@ -39,7 +39,7 @@ async function deliver(to: string, subject: string, html: string): Promise<void>
   }
 }
 
-function sendMail(to: string, subject: string, html: string): Promise<void> {
+export function sendMail(to: string, subject: string, html: string): Promise<void> {
   // ถ้าไม่มี SMTP_USER หรือ SMTP_PASS ข้ามการส่ง (dev mode)
   if (!process.env.SMTP_USER || !process.env.SMTP_PASS) {
     console.warn(`[EMAIL] SMTP not configured — skipping email to ${to}: ${subject}`);

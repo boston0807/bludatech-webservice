@@ -114,10 +114,8 @@ model Employee {
   createdAt    DateTime     @default(now()) @map("created_at")
   updatedAt    DateTime     @updatedAt @map("updated_at")
 
-  surveys         Survey[]
-  receipts        Receipt[]
-  planAssignments WorkPlanTechnician[]
-  safetyChecks    SafetyCheck[]
+  surveys  Survey[]
+  receipts Receipt[]
 
   @@map("employees")
 }
@@ -149,7 +147,6 @@ model Job {
   quotation     Quotation?
   workPlan      WorkPlan?
   receipt       Receipt?
-  safetyChecks  SafetyCheck[]
   parentJob     Job?             @relation("ServiceRounds", fields: [parentJobId], references: [id])
   serviceRounds Job[]            @relation("ServiceRounds")
 
@@ -206,6 +203,7 @@ model Survey {
   surveyDate   DateTime     @default(now()) @map("survey_date")
   method       SurveyMethod @default(ONSITE)
   note         String?
+  rejectNote   String?      @map("reject_note") // ตามแบบ ER Diagram (surveys.reject_note)
 
   job        Job        @relation(fields: [jobId], references: [id])
   technician Employee   @relation(fields: [technicianId], references: [id])
@@ -261,24 +259,11 @@ model WorkPlan {
   createdAt  DateTime       @default(now()) @map("created_at")
   updatedAt  DateTime       @updatedAt @map("updated_at")
 
-  job         Job                  @relation(fields: [jobId], references: [id])
-  survey      Survey?              @relation(fields: [surveyId], references: [id])
-  materials   WorkPlanMaterial[]
-  technicians WorkPlanTechnician[]
+  job       Job                @relation(fields: [jobId], references: [id])
+  survey    Survey?            @relation(fields: [surveyId], references: [id])
+  materials WorkPlanMaterial[]
 
   @@map("work_plans")
-}
-
-// ช่างที่ได้รับมอบหมายในแผนงาน — ใช้ตรวจตารางงานชนกัน (ปัญหา BP ข้อ 3)
-model WorkPlanTechnician {
-  planId     String @map("plan_id")
-  employeeId String @map("employee_id")
-
-  workPlan WorkPlan @relation(fields: [planId], references: [id], onDelete: Cascade)
-  employee Employee @relation(fields: [employeeId], references: [id])
-
-  @@id([planId, employeeId])
-  @@map("work_plan_technicians")
 }
 
 model Material {
@@ -340,26 +325,6 @@ model Payment {
 }
 
 // ─────────────────────────────────────────────
-// SAFETY CHECKLIST (UC13)
-// ─────────────────────────────────────────────
-
-// ผลการทดสอบความปลอดภัยแต่ละรอบ — เก็บทุกรอบ (รวมรอบที่ไม่ผ่าน) เพื่อตรวจสอบย้อนหลัง
-model SafetyCheck {
-  id           String   @id @default(cuid()) @map("check_id")
-  jobId        String   @map("job_id")
-  technicianId String   @map("technician_id")
-  passed       Boolean
-  items        Json // [{ key, label, passed, remark }] ตามรายการมาตรฐานใน src/lib/safety-checklist.ts
-  note         String?
-  checkedAt    DateTime @default(now()) @map("checked_at")
-
-  job        Job      @relation(fields: [jobId], references: [id])
-  technician Employee @relation(fields: [technicianId], references: [id])
-
-  @@map("safety_checks")
-}
-
-// ─────────────────────────────────────────────
 // SERVICE HISTORY
 // ─────────────────────────────────────────────
 
@@ -372,6 +337,7 @@ model ServiceHistory {
   totalCost       Decimal  @map("total_cost") @db.Decimal(10, 2)
   technicianNames String   @map("technician_names")
   summary         String?
+  nextServiceDate DateTime? @map("next_service_date") // วันบำรุงรอบถัดไป ณ วันปิดงาน (เฉพาะงาน SERVICE)
   createdAt       DateTime @default(now()) @map("created_at")
 
   @@map("service_histories")

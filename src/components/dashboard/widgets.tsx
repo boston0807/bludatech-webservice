@@ -160,7 +160,7 @@ type ScheduleItem = {
 
 /** ช่าง: งานวันนี้และงานถัดไป */
 export function TechnicianTodayPanel() {
-  const { data, loading } = useApi<{ items: ScheduleItem[] }>("/api/technicians/schedule?mine=1");
+  const { data, loading } = useApi<{ items: ScheduleItem[] }>("/api/technicians/schedule");
   const items = data?.items ?? [];
   const urgent = items.filter((i) => i.isToday || i.isOverdue);
   const upcoming = items.filter((i) => !i.isToday && !i.isOverdue).slice(0, 3);
@@ -168,14 +168,14 @@ export function TechnicianTodayPanel() {
     <Card>
       <CardHeader className="pb-2">
         <CardTitle className="text-base flex items-center gap-2">
-          <CalendarDays className="h-5 w-5 text-primary" /> งานของฉัน
+          <CalendarDays className="h-5 w-5 text-primary" /> งานวันนี้และงานถัดไป
         </CardTitle>
       </CardHeader>
       <CardContent className="space-y-2 text-sm">
         {loading ? (
           <Loader2 className="h-5 w-5 animate-spin text-muted-foreground" />
         ) : items.length === 0 ? (
-          <p className="text-muted-foreground">ยังไม่มีงานที่ได้รับมอบหมาย</p>
+          <p className="text-muted-foreground">ยังไม่มีแผนงาน</p>
         ) : (
           <>
             {urgent.map((i) => (
