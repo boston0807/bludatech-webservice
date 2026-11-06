@@ -3,6 +3,7 @@
 // Env vars required: SMTP_HOST, SMTP_PORT, SMTP_SECURE, SMTP_USER, SMTP_PASS, SMTP_FROM
 
 import nodemailer from "nodemailer";
+import { getCloudflareContext } from "@opennextjs/cloudflare";
 
 // ─────────────────────────────────────────────
 // Transport (singleton)
@@ -27,13 +28,7 @@ const APP_URL = process.env.NEXT_PUBLIC_APP_URL ?? "http://localhost:3000";
 // Shared mail sender
 // ─────────────────────────────────────────────
 
-async function sendMail(to: string, subject: string, html: string): Promise<void> {
-  // ถ้าไม่มี SMTP_USER หรือ SMTP_PASS ข้ามการส่ง (dev mode)
-  if (!process.env.SMTP_USER || !process.env.SMTP_PASS) {
-    console.warn(`[EMAIL] SMTP not configured — skipping email to ${to}: ${subject}`);
-    return;
-  }
-
+async function deliver(to: string, subject: string, html: string): Promise<void> {
   const transporter = createTransport();
   try {
     await transporter.sendMail({ from: FROM, to, subject, html });
@@ -42,6 +37,24 @@ async function sendMail(to: string, subject: string, html: string): Promise<void
     // ล็อก error แต่ไม่ throw — ไม่ให้ email failure พัง API response
     console.error(`[EMAIL] Failed to send to ${to}:`, err);
   }
+}
+
+function sendMail(to: string, subject: string, html: string): Promise<void> {
+  // ถ้าไม่มี SMTP_USER หรือ SMTP_PASS ข้ามการส่ง (dev mode)
+  if (!process.env.SMTP_USER || !process.env.SMTP_PASS) {
+    console.warn(`[EMAIL] SMTP not configured — skipping email to ${to}: ${subject}`);
+    return Promise.resolve();
+  }
+
+  const task = deliver(to, subject, html);
+  // API route เรียกแบบ fire-and-forget (ไม่ await) — บน Cloudflare Workers งานที่ค้างอยู่
+  // จะถูกตัดทิ้งเมื่อส่ง response แล้ว จึงต้องฝากไว้กับ ctx.waitUntil ให้ส่งจนเสร็จ
+  try {
+    getCloudflareContext().ctx.waitUntil(task);
+  } catch {
+    // ไม่ได้รันบน Workers (next dev / Node.js) — promise ทำงานต่อเองได้
+  }
+  return task;
 }
 
 // ─────────────────────────────────────────────
