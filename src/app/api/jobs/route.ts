@@ -6,7 +6,6 @@ import { successResponse, errorResponse, unauthorizedResponse, forbiddenResponse
 import { createJobSchema } from "@/lib/validations/job";
 import { JobStatus, Prisma } from "@prisma/client";
 import { jobTypeParam, optionalDateFilter, searchTerm } from "@/lib/list-filters";
-import { technicianJobWhere } from "@/lib/work-schedule";
 
 // GET /api/jobs — ดึง jobs ตาม role
 export async function GET(req: NextRequest) {
@@ -68,15 +67,12 @@ export async function GET(req: NextRequest) {
         customer: { select: { customerName: true, customerPhone: true } },
         quotation: { select: { totalAmount: true } },
         receipt: { include: { payments: { orderBy: { paymentDate: "desc" } } } },
-        workPlan: { select: { technicians: { select: { employee: { select: { employeeName: true } } } } } },
       },
       orderBy: { createdAt: "desc" },
     });
   } else if (payload.role === "HEAD_TECHNICIAN" || payload.role === "TECHNICIAN") {
-    // หัวหน้าช่างเห็นทุกงาน / ช่างทั่วไปเห็นเฉพาะงานรอสำรวจและงานของตัวเอง
     jobs = await prisma.job.findMany({
-      where:
-        payload.role === "TECHNICIAN" ? { AND: [baseWhere, technicianJobWhere(payload.sub)] } : baseWhere,
+      where: baseWhere,
       include: {
         customer: { select: { customerName: true, customerPhone: true } },
         installation: true,
@@ -85,10 +81,8 @@ export async function GET(req: NextRequest) {
         workPlan: {
           include: {
             materials: { include: { material: { select: { materialName: true, stockQuantity: true } } } },
-            technicians: { include: { employee: { select: { id: true, employeeName: true, role: true } } } },
           },
         },
-        safetyChecks: { orderBy: { checkedAt: "desc" }, take: 1 },
         surveys: { orderBy: { surveyDate: "desc" }, take: 1, select: { id: true, method: true, surveyDate: true } },
       },
       orderBy: { createdAt: "desc" },

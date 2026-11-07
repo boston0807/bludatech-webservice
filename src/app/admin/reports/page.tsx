@@ -8,7 +8,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
-import { JOB_TYPE_LABEL, ROLE_LABEL, baht, thDate, toDateInput } from "@/lib/labels";
+import { JOB_TYPE_LABEL, baht, thDate, toDateInput } from "@/lib/labels";
 import { downloadCsv, csvDate } from "@/lib/csv";
 import { KpiSection, type Kpi } from "@/components/reports/kpi-section";
 
@@ -164,14 +164,6 @@ export default function AdminReportsPage() {
     kpi &&
     downloadCsv(`report-kpi-${range}`, ["หมวด", "รายการ", "ค่า", "หน่วย", "จำนวนตัวอย่าง"], [
       ...kpi.stages.map((st) => ["ระยะเวลาเฉลี่ย", st.label, st.avgDays ?? "", "วัน", st.sample]),
-      ["ความปลอดภัย", "อัตราผ่านทดสอบครั้งแรก", kpi.safety.firstPassRate ?? "", "%", kpi.safety.testedJobs],
-      ...kpi.technicians.map((t) => [
-        "ภาระงานช่าง",
-        `${t.employeeName} (${ROLE_LABEL[t.role] ?? t.role})`,
-        t.workDays,
-        "วันทำงาน",
-        t.plans,
-      ]),
       ...kpi.revenueByType.map((r) => ["รายได้รับชำระ", JOB_TYPE_LABEL[r.jobType], r.amount.toFixed(2), "บาท", r.payments]),
     ]);
 

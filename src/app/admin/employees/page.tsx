@@ -18,7 +18,7 @@ type Employee = {
   employeeName: string;
   role: "ADMIN" | "ACCOUNTANT" | "TECHNICIAN" | "HEAD_TECHNICIAN";
   createdAt: string;
-  _count: { planAssignments: number; surveys: number };
+  _count: { surveys: number };
 };
 
 const ROLES = ["HEAD_TECHNICIAN", "TECHNICIAN", "ACCOUNTANT", "ADMIN"] as const;
@@ -145,7 +145,7 @@ export default function EmployeesPage() {
                       <Badge variant={ROLE_VARIANT[e.role]}>{ROLE_LABEL[e.role] ?? e.role}</Badge>
                     </td>
                     <td className="py-2 pr-3 text-right tabular-nums">
-                      {e._count.planAssignments} แผน · {e._count.surveys} สำรวจ
+                      {e._count.surveys} สำรวจ
                     </td>
                     <td className="py-2 pr-3">{thDate(e.createdAt)}</td>
                     <td className="py-2 text-right whitespace-nowrap">

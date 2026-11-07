@@ -1,10 +1,10 @@
 // src/app/technician/schedule/page.tsx
-// ตารางงานช่าง — ช่างเห็นงานที่ได้รับมอบหมาย, หัวหน้าช่างเห็นของทั้งทีม (แก้ปัญหาช่างลืมนัด/งานซ้อน)
+// ตารางงานช่าง — แผนงานทั้งหมดเรียงตามวันที่เข้าปฏิบัติงาน (แก้ปัญหาช่างลืมนัด/งานซ้อน)
 "use client";
 
 import { useEffect, useState } from "react";
 import Link from "next/link";
-import { Loader2, CalendarDays, MapPin, Users, AlertTriangle, List } from "lucide-react";
+import { Loader2, CalendarDays, MapPin, AlertTriangle, List } from "lucide-react";
 import { ScheduleCalendar } from "@/components/schedule/schedule-calendar";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -27,34 +27,23 @@ type Item = {
     reworkNote: string | null;
     customer: { customerName: string; customerPhone: string };
   };
-  technicians: { id: string; employeeName: string }[];
   materials: { materialName: string; quantity: number }[];
 };
 
 export default function TechnicianSchedulePage() {
   const [items, setItems] = useState<Item[]>([]);
-  const [onlyMine, setOnlyMine] = useState(true);
-  const [canSeeTeam, setCanSeeTeam] = useState(false);
   const [loading, setLoading] = useState(true);
   const [view, setView] = useState<"list" | "calendar">("list");
 
   useEffect(() => {
-    fetch("/api/auth/me")
-      .then((r) => r.json())
-      .then((d) => d.success && setCanSeeTeam(d.data.role === "HEAD_TECHNICIAN"))
-      .catch(() => {});
-  }, []);
-
-  useEffect(() => {
     setLoading(true);
     const sp = new URLSearchParams();
-    if (onlyMine) sp.set("mine", "1");
     if (view === "calendar") sp.set("past", "1"); // ปฏิทินแสดงงานย้อนหลังด้วย
     fetch(`/api/technicians/schedule?${sp}`)
       .then((r) => r.json())
       .then((d) => d.success && setItems(d.data.items))
       .finally(() => setLoading(false));
-  }, [onlyMine, view]);
+  }, [view]);
 
   // จัดกลุ่มตามวันเริ่มงาน
   const groups = items.reduce<Record<string, Item[]>>((acc, it) => {
@@ -68,7 +57,7 @@ export default function TechnicianSchedulePage() {
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
         <div>
           <h1 className="text-2xl font-bold tracking-tight">ตารางงาน</h1>
-          <p className="text-muted-foreground">งานที่ได้รับมอบหมายตามแผนงาน เรียงตามวันที่เข้าปฏิบัติงาน</p>
+          <p className="text-muted-foreground">แผนงานที่ยังดำเนินการอยู่ เรียงตามวันที่เข้าปฏิบัติงาน</p>
         </div>
         <div className="flex flex-wrap gap-2">
           <Button size="sm" variant={view === "list" ? "default" : "outline"} onClick={() => setView("list")}>
@@ -77,16 +66,6 @@ export default function TechnicianSchedulePage() {
           <Button size="sm" variant={view === "calendar" ? "default" : "outline"} onClick={() => setView("calendar")}>
             <CalendarDays className="h-4 w-4" /> ปฏิทิน
           </Button>
-        {canSeeTeam && (
-          <div className="flex gap-2">
-            <Button size="sm" variant={onlyMine ? "default" : "outline"} onClick={() => setOnlyMine(true)}>
-              งานของฉัน
-            </Button>
-            <Button size="sm" variant={!onlyMine ? "default" : "outline"} onClick={() => setOnlyMine(false)}>
-              ทั้งทีม
-            </Button>
-          </div>
-        )}
         </div>
       </div>
 
@@ -98,7 +77,7 @@ export default function TechnicianSchedulePage() {
         <ScheduleCalendar items={items} />
       ) : items.length === 0 ? (
         <Card>
-          <CardContent className="py-16 text-center text-muted-foreground">ยังไม่มีงานที่ได้รับมอบหมาย</CardContent>
+          <CardContent className="py-16 text-center text-muted-foreground">ยังไม่มีแผนงาน</CardContent>
         </Card>
       ) : (
         Object.entries(groups).map(([day, list]) => (
@@ -128,9 +107,6 @@ export default function TechnicianSchedulePage() {
                   <p>
                     <span className="text-muted-foreground">วันที่: </span>
                     {thDateRange(it.startDate, it.endDate)} · โทร {it.job.customer.customerPhone}
-                  </p>
-                  <p className="flex items-center gap-1">
-                    <Users className="h-3.5 w-3.5" /> {it.technicians.map((t) => t.employeeName).join(", ")}
                   </p>
                   {it.materials.length > 0 && (
                     <p className="text-xs text-muted-foreground">

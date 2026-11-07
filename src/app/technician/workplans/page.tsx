@@ -10,7 +10,6 @@ import {
   Calendar,
   ShieldCheck,
   Play,
-  Users,
   AlertTriangle,
   XCircle,
   CheckCircle2,
@@ -28,25 +27,12 @@ import {
   JOB_STATUS_LABEL,
   PLAN_STATUS_LABEL,
   PLAN_STATUS_VARIANT,
-  ROLE_LABEL,
-  thDate,
   thDateRange,
   toDateInput,
   dateInputToIso,
 } from "@/lib/labels";
 
 type Material = { id: string; materialName: string; stockQuantity: number };
-
-type Technician = {
-  id: string;
-  employeeName: string;
-  role: string;
-  available: boolean;
-  activePlans: number;
-  conflicts: { jobId: string; jobAddress: string; startDate: string; endDate: string }[];
-};
-
-type SafetyItem = { key: string; label: string; passed: boolean; remark: string | null };
 
 type Job = {
   id: string;
@@ -63,9 +49,7 @@ type Job = {
     status: string;
     rejectNote: string | null;
     materials: { materialId: string; quantity: number; material: { materialName: string; stockQuantity: number } }[];
-    technicians: { employeeId: string; employee: { id: string; employeeName: string; role: string } }[];
   } | null;
-  safetyChecks?: { id: string; passed: boolean; items: SafetyItem[]; note: string | null; checkedAt: string }[];
 };
 
 type Shortage = { id: string; materialName: string; shortageQty: number };
@@ -88,9 +72,6 @@ export default function TechnicianWorkplansPage() {
   const [startDate, setStartDate] = useState("");
   const [endDate, setEndDate] = useState("");
   const [location, setLocation] = useState("");
-  const [technicians, setTechnicians] = useState<Technician[]>([]);
-  const [techLoading, setTechLoading] = useState(false);
-  const [selectedTechIds, setSelectedTechIds] = useState<string[]>([]);
   const [selectedMaterialId, setSelectedMaterialId] = useState("");
   const [materialQty, setMaterialQty] = useState(1);
   const [planMaterials, setPlanMaterials] = useState<{ materialId: string; materialName: string; quantity: number }[]>([]);
@@ -129,18 +110,6 @@ export default function TechnicianWorkplansPage() {
     loadData();
   }, [loadData]);
 
-  // โหลดรายชื่อช่างพร้อมสถานะว่าง/ไม่ว่างตามช่วงวันที่เลือก
-  useEffect(() => {
-    if (!planJob || !startDate) return;
-    const from = dateInputToIso(startDate);
-    const to = dateInputToIso(endDate || startDate);
-    setTechLoading(true);
-    fetch(`/api/technicians?from=${encodeURIComponent(from)}&to=${encodeURIComponent(to)}&excludeJobId=${planJob.id}`)
-      .then((r) => r.json())
-      .then((d) => d.success && setTechnicians(d.data))
-      .finally(() => setTechLoading(false));
-  }, [planJob, startDate, endDate]);
-
   const shortageById = useMemo(() => new Map(shortages.map((s) => [s.id, s])), [shortages]);
 
   const openPlanForm = (job: Job) => {
@@ -151,7 +120,6 @@ export default function TechnicianWorkplansPage() {
     setStartDate(toDateInput(plan?.startDate ?? new Date()));
     setEndDate(toDateInput(plan?.endDate ?? plan?.startDate ?? new Date()));
     setLocation(plan?.location || job.jobAddress);
-    setSelectedTechIds(plan?.technicians.map((t) => t.employeeId) ?? []);
     setPlanMaterials(
       plan?.materials.map((m) => ({ materialId: m.materialId, materialName: m.material.materialName, quantity: m.quantity })) ?? []
     );
@@ -167,9 +135,6 @@ export default function TechnicianWorkplansPage() {
     setAnswers(init);
     setSafetyNote("");
   };
-
-  const toggleTech = (id: string) =>
-    setSelectedTechIds((prev) => (prev.includes(id) ? prev.filter((x) => x !== id) : [...prev, id]));
 
   const handleAddMaterialToPlan = () => {
     const mat = materials.find((m) => m.id === selectedMaterialId);
@@ -196,10 +161,6 @@ export default function TechnicianWorkplansPage() {
 
   const handleSavePlan = () => {
     if (!planJob) return;
-    if (selectedTechIds.length === 0) {
-      setMessage({ type: "error", text: "กรุณาเลือกช่างผู้ปฏิบัติงานอย่างน้อย 1 คน" });
-      return;
-    }
     call(
       `/api/jobs/${planJob.id}/workplan`,
       {
@@ -209,7 +170,6 @@ export default function TechnicianWorkplansPage() {
           startDate: dateInputToIso(startDate),
           endDate: dateInputToIso(endDate || startDate),
           location: location || planJob.jobAddress,
-          technicianIds: selectedTechIds,
           materials: planMaterials.map((m) => ({ materialId: m.materialId, quantity: m.quantity })),
         }),
       },
@@ -261,19 +221,13 @@ export default function TechnicianWorkplansPage() {
     );
   };
 
-  const isAssigned = (job: Job) => {
-    const ids = job.workPlan?.technicians.map((t) => t.employeeId) ?? [];
-    if (!me) return true;
-    return me.role === "HEAD_TECHNICIAN" || ids.length === 0 || ids.includes(me.id);
-  };
-
   const allPassed = SAFETY_CHECKLIST.every((i) => answers[i.key]?.passed === true);
 
   return (
     <div className="space-y-6">
       <div>
         <h1 className="text-2xl font-bold tracking-tight">แผนงานและปฏิบัติงาน</h1>
-        <p className="text-muted-foreground">จัดทำแผนงาน มอบหมายช่าง จองอุปกรณ์ เริ่มงาน และบันทึกผลทดสอบความปลอดภัย</p>
+        <p className="text-muted-foreground">จัดทำแผนงาน จองอุปกรณ์ เริ่มงาน และบันทึกผลทดสอบความปลอดภัย</p>
       </div>
 
       {message && (
@@ -317,55 +271,6 @@ export default function TechnicianWorkplansPage() {
 
             {/* สถานที่ — เต็มความกว้างเพื่อให้แผนที่ใช้งานสะดวก (ค่าเริ่มต้น = ที่อยู่ในใบงาน) */}
             <LocationPicker key={planJob.id} label="สถานที่ปฏิบัติงาน" value={location} onChange={setLocation} />
-
-            {/* มอบหมายช่าง */}
-            <div className="space-y-2">
-              <Label className="flex items-center gap-2">
-                <Users className="h-4 w-4" /> ช่างผู้ปฏิบัติงาน
-                {techLoading && <Loader2 className="h-3.5 w-3.5 animate-spin" />}
-              </Label>
-              <p className="text-xs text-muted-foreground">
-                ระบบตรวจตารางงานของช่างแต่ละคนในช่วงวันที่เลือก ช่างที่มีงานชนกันจะเลือกไม่ได้
-              </p>
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-2">
-                {technicians.map((t) => {
-                  const checked = selectedTechIds.includes(t.id);
-                  const disabled = !t.available && !checked;
-                  return (
-                    <label
-                      key={t.id}
-                      className={`flex items-start gap-3 rounded-md border px-3 py-2 text-sm ${
-                        disabled ? "opacity-60 bg-muted cursor-not-allowed" : "cursor-pointer hover:bg-accent"
-                      } ${checked ? "border-primary bg-primary/5" : ""}`}
-                    >
-                      <input
-                        type="checkbox"
-                        className="mt-1 h-4 w-4 accent-primary"
-                        checked={checked}
-                        disabled={disabled}
-                        onChange={() => toggleTech(t.id)}
-                      />
-                      <div className="flex-1">
-                        <div className="flex items-center gap-2">
-                          <span className="font-medium">{t.employeeName}</span>
-                          <Badge variant="outline">{ROLE_LABEL[t.role] ?? t.role}</Badge>
-                          {t.available ? (
-                            <Badge variant="success">ว่าง</Badge>
-                          ) : (
-                            <Badge variant="destructive">ไม่ว่าง</Badge>
-                          )}
-                        </div>
-                        {t.conflicts.map((c) => (
-                          <p key={c.jobId} className="text-xs text-destructive mt-1">
-                            มีงาน {thDateRange(c.startDate, c.endDate)} ที่ {c.jobAddress}
-                          </p>
-                        ))}
-                      </div>
-                    </label>
-                  );
-                })}
-              </div>
-            </div>
 
             {/* จองอุปกรณ์ */}
             <div className="space-y-2">
@@ -535,14 +440,12 @@ export default function TechnicianWorkplansPage() {
           {jobs.map((job) => {
             const Icon = JOB_TYPE_ICON[job.jobType];
             const plan = job.workPlan;
-            const lastCheck = job.safetyChecks?.[0];
             // UC08 — เฉพาะหัวหน้าช่างจัดทำ/แก้ไขแผนงาน
             const canEditPlan =
               me?.role === "HEAD_TECHNICIAN" &&
               job.status === "APPROVE" &&
               (!plan || plan.status === "DRAFT" || plan.status === "REJECTED");
             const planShortages = plan?.materials.filter((m) => shortageById.has(m.materialId)) ?? [];
-            const assigned = isAssigned(job);
             return (
               <Card key={job.id} className="shadow-sm">
                 <CardHeader className="pb-3">
@@ -573,24 +476,6 @@ export default function TechnicianWorkplansPage() {
                     </div>
                   )}
 
-                  {job.status === "IN_PROGRESS" && lastCheck && !lastCheck.passed && (
-                    <div className="rounded-md border border-destructive/30 bg-destructive/5 px-3 py-2 text-sm">
-                      <p className="font-medium text-destructive">
-                        ทดสอบความปลอดภัยรอบล่าสุด ({thDate(lastCheck.checkedAt)}) ไม่ผ่าน:
-                      </p>
-                      <ul className="list-disc pl-5 text-destructive">
-                        {lastCheck.items
-                          .filter((i) => !i.passed)
-                          .map((i) => (
-                            <li key={i.key}>
-                              {i.label}
-                              {i.remark ? ` — ${i.remark}` : ""}
-                            </li>
-                          ))}
-                      </ul>
-                    </div>
-                  )}
-
                   {plan && (
                     <div className="p-3 bg-muted rounded-md space-y-1.5 text-sm">
                       <div className="flex flex-wrap items-center gap-2">
@@ -604,9 +489,6 @@ export default function TechnicianWorkplansPage() {
                         <p className="text-xs text-destructive">เหตุผลจากลูกค้า: {plan.rejectNote}</p>
                       )}
                       <p className="text-xs text-muted-foreground">สถานที่: {plan.location || job.jobAddress}</p>
-                      <p className="text-xs">
-                        ช่าง: {plan.technicians.length ? plan.technicians.map((t) => t.employee.employeeName).join(", ") : "ยังไม่ได้มอบหมาย"}
-                      </p>
                       {plan.materials.length > 0 && (
                         <p className="text-xs">
                           อุปกรณ์ที่จอง: {plan.materials.map((m) => `${m.material.materialName} (${m.quantity})`).join(", ")}
@@ -625,15 +507,14 @@ export default function TechnicianWorkplansPage() {
                     {canEditPlan && (
                       <Button size="sm" onClick={() => openPlanForm(job)} className="gap-1.5">
                         <Calendar className="h-4 w-4" />
-                        {plan ? (plan.status === "REJECTED" ? "แก้ไขแผนตามที่ลูกค้าขอ" : "แก้ไขแผนงาน") : "ทำแผนงาน มอบหมายช่าง และจองอุปกรณ์"}
+                        {plan ? (plan.status === "REJECTED" ? "แก้ไขแผนตามที่ลูกค้าขอ" : "แก้ไขแผนงาน") : "ทำแผนงานและจองอุปกรณ์"}
                       </Button>
                     )}
                     {job.status === "PLAN_APPROVED" && (
                       <Button
                         size="sm"
                         onClick={() => handleStartWork(job.id)}
-                        disabled={actionLoading || !assigned}
-                        title={assigned ? undefined : "งานนี้ไม่ได้มอบหมายให้คุณ"}
+                        disabled={actionLoading}
                         className="gap-1.5"
                       >
                         {actionLoading ? <Loader2 className="h-4 w-4 animate-spin" /> : <Play className="h-4 w-4" />}
@@ -644,15 +525,11 @@ export default function TechnicianWorkplansPage() {
                       <Button
                         size="sm"
                         variant="outline"
-                        disabled={!assigned}
                         onClick={() => openSafetyForm(job)}
                         className="gap-1.5 border-green-500 text-green-700 hover:bg-green-50"
                       >
                         <ShieldCheck className="h-4 w-4" /> บันทึกผลทดสอบความปลอดภัย
                       </Button>
-                    )}
-                    {!assigned && ["PLAN_APPROVED", "IN_PROGRESS"].includes(job.status) && (
-                      <span className="text-xs text-muted-foreground self-center">งานนี้ไม่ได้มอบหมายให้คุณ</span>
                     )}
                   </div>
                 </CardContent>

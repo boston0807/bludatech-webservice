@@ -15,12 +15,11 @@ import {
   FileText,
   ClipboardCheck,
   ShieldCheck,
-  XCircle,
   AlertTriangle,
   CalendarClock,
-  Users,
 } from "lucide-react";
 import { PLAN_STATUS_LABEL, PLAN_STATUS_VARIANT, thDate, thDateRange } from "@/lib/labels";
+import { jobNoteWithoutSafety, latestSafetyResult } from "@/lib/safety-checklist";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import {
@@ -66,16 +65,6 @@ type WorkPlan = {
     quantity: number;
     material: { materialName: string };
   }[];
-  technicians?: { employee: { employeeName: string } }[];
-};
-
-type SafetyCheck = {
-  id: string;
-  passed: boolean;
-  checkedAt: string;
-  note: string | null;
-  items: { key: string; label: string; passed: boolean; remark: string | null }[];
-  technician?: { employeeName: string };
 };
 
 type Job = {
@@ -95,7 +84,6 @@ type Job = {
     payments: { paymentDate: string; amount: string }[];
   } | null;
   surveys: { surveyDate: string; method: string; technician: { employeeName: string } | null }[];
-  safetyChecks: SafetyCheck[];
   parentJob: { id: string; jobAddress: string } | null;
   customer: {
     customerName: string;
@@ -506,10 +494,10 @@ export default function CustomerJobDetailPage({
             )}
           </div>
 
-          {job.jobNote && (
+          {jobNoteWithoutSafety(job.jobNote) && (
             <div className="pt-2 border-t">
               <p className="text-muted-foreground text-xs mb-1">หมายเหตุ</p>
-              <p className="text-sm whitespace-pre-line">{job.jobNote}</p>
+              <p className="text-sm whitespace-pre-line">{jobNoteWithoutSafety(job.jobNote)}</p>
             </div>
           )}
 
@@ -744,12 +732,6 @@ export default function CustomerJobDetailPage({
             <div className="space-y-2 text-sm">
               <p className="font-medium">วันที่: {thDateRange(job.workPlan.startDate, job.workPlan.endDate)}</p>
               <p className="text-muted-foreground">สถานที่: {job.workPlan.location || job.jobAddress}</p>
-              {job.workPlan.technicians && job.workPlan.technicians.length > 0 && (
-                <p className="flex items-center gap-1 text-muted-foreground">
-                  <Users className="h-3.5 w-3.5" /> ทีมช่าง:{" "}
-                  {job.workPlan.technicians.map((t) => t.employee.employeeName).join(", ")}
-                </p>
-              )}
               <div className="flex items-center gap-2">
                 <span className="text-muted-foreground">สถานะแผน:</span>
                 <Badge variant={PLAN_STATUS_VARIANT[job.workPlan.status] ?? "outline"}>
@@ -845,35 +827,17 @@ export default function CustomerJobDetailPage({
         </Card>
       )}
 
-      {/* ผลการทดสอบความปลอดภัยล่าสุด (UC13) */}
-      {job.safetyChecks?.length > 0 &&
+      {/* ผลการทดสอบความปลอดภัย (UC13) — บันทึกไว้ใน job_note */}
+      {latestSafetyResult(job.jobNote) &&
         ["WAITING_ACCEPTANCE", "ACCEPTED", "PAID", "COMPLETED"].includes(job.status) && (
           <Card>
             <CardHeader>
               <CardTitle className="text-base flex items-center gap-2">
                 <ShieldCheck className="h-4 w-4 text-green-600" /> ผลการทดสอบความปลอดภัย
               </CardTitle>
-              <CardDescription>
-                ทดสอบเมื่อ {thDate(job.safetyChecks[0].checkedAt)} โดย {job.safetyChecks[0].technician?.employeeName ?? "ช่าง"}
-                {job.safetyChecks.length > 1 && ` · ทดสอบทั้งหมด ${job.safetyChecks.length} รอบ`}
-              </CardDescription>
             </CardHeader>
             <CardContent>
-              <ul className="grid grid-cols-1 md:grid-cols-2 gap-1 text-sm">
-                {job.safetyChecks[0].items.map((i) => (
-                  <li key={i.key} className="flex items-center gap-2">
-                    {i.passed ? (
-                      <CheckCircle2 className="h-4 w-4 text-green-600 shrink-0" />
-                    ) : (
-                      <XCircle className="h-4 w-4 text-destructive shrink-0" />
-                    )}
-                    {i.label}
-                  </li>
-                ))}
-              </ul>
-              {job.safetyChecks[0].note && (
-                <p className="mt-2 text-xs text-muted-foreground">หมายเหตุช่าง: {job.safetyChecks[0].note}</p>
-              )}
+              <p className="text-sm whitespace-pre-line">{latestSafetyResult(job.jobNote)}</p>
             </CardContent>
           </Card>
         )}

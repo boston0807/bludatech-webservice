@@ -24,7 +24,7 @@ export default function AdminSchedulePage() {
     <div className="space-y-6">
       <div>
         <h1 className="text-2xl font-bold tracking-tight">ตารางงานช่าง</h1>
-        <p className="text-muted-foreground">แผนงานที่ยังไม่ปิดของทุกทีม เรียงตามวันเข้าปฏิบัติงาน · วันที่ช่างคนเดียวกันมีงานซ้อนจะมีกรอบสีแดง</p>
+        <p className="text-muted-foreground">แผนงานที่ยังไม่ปิดของทุกทีม เรียงตามวันเข้าปฏิบัติงาน</p>
       </div>
       {error && <div className="p-4 bg-destructive/10 text-destructive text-sm rounded-md border border-destructive/30">{error}</div>}
       {loading ? (

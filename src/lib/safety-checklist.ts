@@ -54,3 +54,37 @@ export function parseSafetyItems(
 
   return { ok: true, items, passed: items.every((i) => i.passed) };
 }
+
+/**
+ * UC13 ข้อ 5: บันทึกผลการตรวจ (PASS) ต่อท้าย job_note — ไม่มีตารางแยก เก็บเป็นข้อความในใบงาน
+ */
+export function appendSafetyResultToNote(
+  jobNote: string | null,
+  params: { items: SafetyCheckItem[]; note: string | null; technicianName: string; checkedAt: Date }
+): string {
+  const { items, note, technicianName, checkedAt } = params;
+  const date = checkedAt.toLocaleDateString("th-TH", { year: "numeric", month: "long", day: "numeric" });
+  const lines = [
+    `[ผลทดสอบความปลอดภัย: PASS] ${date} โดย ${technicianName}`,
+    ...items.map((i) => `- ${i.label}: ผ่าน${i.remark ? ` (${i.remark})` : ""}`),
+    ...(note ? [`หมายเหตุช่าง: ${note}`] : []),
+  ];
+  return [jobNote?.trim(), lines.join("\n")].filter(Boolean).join("\n\n");
+}
+
+const SAFETY_RESULT_MARK = "[ผลทดสอบความปลอดภัย:";
+
+/** ดึงผลทดสอบความปลอดภัยครั้งล่าสุดที่บันทึกไว้ใน job_note (null ถ้ายังไม่เคยทดสอบผ่าน) */
+export function latestSafetyResult(jobNote: string | null | undefined): string | null {
+  if (!jobNote) return null;
+  const i = jobNote.lastIndexOf(SAFETY_RESULT_MARK);
+  return i === -1 ? null : jobNote.slice(i).trim();
+}
+
+/** job_note ส่วนที่ลูกค้ากรอกตอนยื่นคำขอ (ตัดผลทดสอบความปลอดภัยที่ระบบต่อท้ายออก) */
+export function jobNoteWithoutSafety(jobNote: string | null | undefined): string | null {
+  if (!jobNote) return null;
+  const i = jobNote.indexOf(SAFETY_RESULT_MARK);
+  const rest = (i === -1 ? jobNote : jobNote.slice(0, i)).trim();
+  return rest || null;
+}

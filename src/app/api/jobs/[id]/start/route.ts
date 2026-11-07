@@ -3,7 +3,6 @@ import { NextRequest } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { getAuth } from "@/lib/api-auth";
 import { ApiError, successResponse, errorResponse, unauthorizedResponse, forbiddenResponse, notFoundResponse } from "@/lib/api-response";
-import { canWorkOnPlan } from "@/lib/work-schedule";
 
 type Params = { params: Promise<{ id: string }> };
 
@@ -24,13 +23,9 @@ export async function PATCH(req: NextRequest, { params }: Params) {
 
   const workPlan = await prisma.workPlan.findUnique({
     where: { jobId: id },
-    include: { materials: { include: { material: true } }, technicians: true },
+    include: { materials: { include: { material: true } } },
   });
 
-  const assignedIds = workPlan?.technicians.map((t) => t.employeeId) ?? [];
-  if (!canWorkOnPlan(auth.role, auth.sub, assignedIds)) {
-    return forbiddenResponse("งานนี้ไม่ได้มอบหมายให้คุณ กรุณาติดต่อหัวหน้าช่าง");
-  }
 
   try {
     await prisma.$transaction(async (tx) => {

@@ -31,7 +31,6 @@ type Job = {
   customer?: { customerName: string; customerPhone: string };
   quotation?: { totalAmount: string } | null;
   receipt?: { id: string; totalAmount: string; status: string; payments: Payment[] } | null;
-  workPlan?: { technicians: { employee: { employeeName: string } }[] } | null;
 };
 type Draft = { summary: string; technicianNames: string };
 
@@ -79,8 +78,7 @@ export default function ServiceHistoryApprovalPage() {
             j.id,
             {
               summary: j.jobNote ?? "",
-              // ค่าเริ่มต้น = ช่างที่ได้รับมอบหมายในแผนงาน (แก้ไขได้)
-              technicianNames: j.workPlan?.technicians.map((t) => t.employee.employeeName).join(", ") ?? "",
+              technicianNames: "",
             },
           ])
         ));
